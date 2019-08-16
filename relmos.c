@@ -25,6 +25,13 @@ typedef struct elem
 	struct elem *next;
 } rel_t;
 
+typedef struct rel
+{
+	char *name;
+	rel_t *instances;
+	struct rel *next;
+} rel_type_t;
+
 typedef struct max
 {
 	char *name;
@@ -32,7 +39,7 @@ typedef struct max
 } max_t;
 
 ent_t *entities = NULL;
-rel_t *relation = NULL;
+rel_type_t *relations;
 
 void addent(char *entity);
 void delent(char *entity);
@@ -42,10 +49,11 @@ void report();
 
 ent_t *_getent(char *name);
 ent_t *_getprevent(char *name);
-rel_t *_getprevdst(char *name);
+rel_t *_getprevdst(char *name, rel_t *relation);
 src_t *_getprevsrc(char *name, src_t *sources);
+rel_t *_getreltype(char *name);
 void _delsrc(char *name, rel_t *curr_dst);
-void _deldst(rel_t *prev, rel_t *curr);
+void _deldst(rel_t *prev, rel_t *curr, rel_t **relation);
 
 int main(int argc, char const *argv[])
 {
@@ -91,17 +99,23 @@ int main(int argc, char const *argv[])
 				addrel(src, dst, rel);
 
 				#ifdef DEBUG
-				rel_t *curr = relation;
-				while (curr != NULL)
+				rel_type_t *type = relations;
+				while (type != NULL)
 				{
-					printf("- %s (%d)\n", curr->dst->name, curr->count);
-					src_t *s = curr->sources;
-					while (s != NULL)
+					printf("%s\n", type->name);
+					rel_t *curr = type->instances;
+					while (curr != NULL)
 					{
-						printf("  - %s\n", s->src->name);
-						s = s->next;
+						printf("  - %s (%d)\n", curr->dst->name, curr->count);
+						src_t *s = curr->sources;
+						while (s != NULL)
+						{
+							printf("    | %s\n", s->src->name);
+							s = s->next;
+						}
+						curr = curr->next;
 					}
-					curr = curr->next;
+					type = type->next;
 				}
 				#endif
 			}
@@ -140,17 +154,23 @@ int main(int argc, char const *argv[])
 				delrel(src, dst, rel);
 
 				#ifdef DEBUG
-				rel_t *curr = relation;
-				while (curr != NULL)
+				rel_type_t *type = relations;
+				while (type != NULL)
 				{
-					printf("- %s (%d)\n", curr->dst->name, curr->count);
-					src_t *s = curr->sources;
-					while (s != NULL)
+					printf("%s", type->name);
+					rel_t *curr = type->instances;
+					while (curr != NULL)
 					{
-						printf("  - %s\n", s->src->name);
-						s = s->next;
+						printf("  - %s (%d)\n", curr->dst->name, curr->count);
+						src_t *s = curr->sources;
+						while (s != NULL)
+						{
+							printf("    | %s\n", s->src->name);
+							s = s->next;
+						}
+						curr = curr->next;
 					}
-					curr = curr->next;
+					type = type->next;
 				}
 				#endif
 			}
@@ -189,34 +209,41 @@ void delent(char *entity)
 
 	if (curr_ent != NULL)
 	{
-		rel_t *curr_dst = relation;
-		rel_t *prev_dst = NULL;
-		while (curr_dst != NULL)
+		rel_type_t *rel_type = relations;
+		while (rel_type != NULL)
 		{
-			if (strcmp(entity, curr_dst->dst->name) == 0)
+			//rel_t *curr_dst = relation;
+			rel_t *curr_dst = rel_type->instances;
+			rel_t *prev_dst = NULL;
+			while (curr_dst != NULL)
 			{
-				// remove from destinations
-				_deldst(prev_dst, curr_dst);
-
-				curr_dst = (prev_dst != NULL) ? prev_dst->next : relation;
-			}
-			else
-			{
-				// remove from sources
-				_delsrc(entity, curr_dst);
-				
-				if (curr_dst->count == 0)
+				if (strcmp(entity, curr_dst->dst->name) == 0)
 				{
-					_deldst(prev_dst, curr_dst);
+					// remove from destinations
+					_deldst(prev_dst, curr_dst, &rel_type->instances);
 
-					curr_dst = (prev_dst != NULL) ? prev_dst->next : relation;
+					curr_dst = (prev_dst != NULL) ? prev_dst->next : rel_type->instances;
 				}
 				else
 				{
-					prev_dst = curr_dst;
-					curr_dst = curr_dst->next;
+					// remove from sources
+					_delsrc(entity, curr_dst);
+					
+					if (curr_dst->count == 0)
+					{
+						_deldst(prev_dst, curr_dst, &rel_type->instances);
+
+						curr_dst = (prev_dst != NULL) ? prev_dst->next : rel_type->instances;
+					}
+					else
+					{
+						prev_dst = curr_dst;
+						curr_dst = curr_dst->next;
+					}
 				}
 			}
+
+			rel_type = rel_type->next;
 		}
 
 		// remove entity
@@ -237,7 +264,44 @@ void delent(char *entity)
 
 void addrel(char *src, char *dst, char *rel)
 {
-	free(rel); // NOTE: temporary
+	rel_type_t *curr_type = relations;
+	rel_type_t *ins_type = NULL;
+	char found_type = 0;
+	while (curr_type != NULL && found_type == 0)
+	{
+		int cmp = strcmp(rel, curr_type->name);
+		if (cmp == 0)
+		{
+			found_type = 1;
+		}
+		else
+		{
+			if (cmp > 0)
+			{
+				ins_type = curr_type;
+			}
+			curr_type = curr_type->next;
+		}
+	}
+
+	if (found_type == 0)
+	{
+		rel_type_t *new_type = malloc(sizeof(rel_type_t));
+		new_type->name = rel;
+		new_type->instances = NULL;
+		if (ins_type == NULL)
+		{
+			new_type->next = relations;
+			relations = new_type;
+		}
+		else
+		{
+			new_type->next = ins_type->next;
+			ins_type->next = new_type;
+		}
+		
+		curr_type = new_type;
+	}
 
 	ent_t *src_ent = _getent(src);
 	ent_t *dst_ent = _getent(dst);
@@ -245,7 +309,7 @@ void addrel(char *src, char *dst, char *rel)
 	free(src);
 	free(dst);
 
-	rel_t *curr = relation;
+	rel_t *curr = curr_type->instances;
 	rel_t *ins = NULL;
 	char found = 0;
 	while (curr != NULL && found == 0)
@@ -274,8 +338,8 @@ void addrel(char *src, char *dst, char *rel)
 
 		if (ins == NULL)
 		{
-			new_dst->next = relation;
-			relation = new_dst;
+			new_dst->next = curr_type->instances;
+			curr_type->instances = new_dst;
 		}
 		else
 		{
@@ -295,9 +359,10 @@ void addrel(char *src, char *dst, char *rel)
 
 void delrel(char *src, char *dst, char *rel)
 {
-	free(rel);  // NOTE: temporary
+	rel_t *relation = _getreltype(rel);
+	free(rel);
 
-	rel_t *prev_dst = _getprevdst(dst);
+	rel_t *prev_dst = _getprevdst(dst, relation);
 	rel_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : relation;
 
 	free(dst);
@@ -310,63 +375,76 @@ void delrel(char *src, char *dst, char *rel)
 
 		if (curr_dst->count == 0)
 		{
-			_deldst(prev_dst, curr_dst);
+			_deldst(prev_dst, curr_dst, &relation);
 		}
 	}
 }
 
 void report()
 {
-	if (relation == NULL)
+	char empty = 1;
+
+	rel_type_t *curr_type = relations;
+	while (curr_type != NULL)
+	{
+		if (curr_type->instances != NULL)
+		{
+			empty = 0;
+			rel_t *relation = curr_type->instances;
+
+			max_t *dsts = malloc(sizeof(max_t));
+			dsts->name = relation->dst->name;
+			dsts->next = NULL;
+			int max = relation->count;
+
+			rel_t *curr = relation->next;
+			while (curr != NULL)
+			{
+				if (curr->count > max)
+				{
+					max = curr->count;
+
+					max_t *c;
+					while (dsts->next != NULL)
+					{
+						c = dsts;
+						dsts = c->next;
+						free(c);
+					}
+					
+					dsts->name = curr->dst->name;
+				}
+				else if (curr->count == max)
+				{
+					max_t *new = malloc(sizeof(max_t));
+					new->name = curr->dst->name;
+					new->next = dsts;
+					dsts = new;
+				}
+
+				curr = curr->next;
+			}
+
+			max_t *tmp;
+			printf("%s ", curr_type->name);
+			while (dsts != NULL)
+			{
+				printf("%s ", dsts->name);
+
+				tmp = dsts;
+				dsts = tmp->next;
+				free(tmp);
+			}
+			printf("%d;%c", max, (curr_type->next != NULL) ? ' ' : '\n');
+		}
+
+		curr_type = curr_type->next;
+	}
+
+	if (empty == 1)
 	{
 		printf("none\n");
-		return;
 	}
-
-	max_t *dsts = malloc(sizeof(max_t));
-	dsts->name = relation->dst->name;
-	dsts->next = NULL;
-	int max = relation->count;
-
-	rel_t *curr = relation->next;
-	while (curr != NULL)
-	{
-		if (curr->count > max)
-		{
-			max = curr->count;
-
-			max_t *c;
-			while (dsts->next != NULL)
-			{
-				c = dsts;
-				dsts = c->next;
-				free(c);
-			}
-			
-			dsts->name = curr->dst->name;
-		}
-		else if (curr->count == max)
-		{
-			max_t *new = malloc(sizeof(max_t));
-			new->name = curr->dst->name;
-			new->next = dsts;
-			dsts = new;
-		}
-
-		curr = curr->next;
-	}
-
-	printf("\"test\" ");  // NOTE: temporary
-	max_t *tmp;
-	while (dsts != NULL)
-	{
-		printf("%s ", dsts->name);
-
-		tmp = dsts;
-		dsts = tmp->next;
-		free(tmp);
-	}
-	printf("%d;\n", max);
 }
 
 ent_t *_getent(char *name)
@@ -402,7 +480,7 @@ ent_t *_getprevent(char *name)
 	return prev;
 }
 
-rel_t *_getprevdst(char *name)
+rel_t *_getprevdst(char *name, rel_t *relation)
 {
 	rel_t *curr = relation;
 	rel_t *prev = NULL;
@@ -440,6 +518,20 @@ src_t *_getprevsrc(char *name, src_t *sources)
 	return prev;
 }
 
+rel_t *_getreltype(char *name)
+{
+	rel_type_t *curr = relations;
+	while (curr != NULL)
+	{
+		if (strcmp(name, curr->name) == 0)
+		{
+			return curr->instances;
+		}
+		curr = curr->next;
+	}
+	return NULL;
+}
+
 void _delsrc(char *name, rel_t *curr_dst)
 {
 	src_t *prev_src = _getprevsrc(name, curr_dst->sources);
@@ -462,11 +554,11 @@ void _delsrc(char *name, rel_t *curr_dst)
 	}
 }
 
-void _deldst(rel_t *prev, rel_t *curr)
+void _deldst(rel_t *prev, rel_t *curr, rel_t **relation)
 {
 	if (prev == NULL)
 	{
-		relation = curr->next;
+		*relation = curr->next;
 	}
 	else
 	{
