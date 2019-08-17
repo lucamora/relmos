@@ -372,23 +372,13 @@ void addrel(char *src, char *dst, char *rel)
 		curr_dst = new_dst;
 	}
 
-	src_t *curr_src = curr_dst->sources;
-	char found_src = 0;
-	while (curr_src != NULL && found_src == 0)
-	{
-		if (strcmp(dst_ent->name, curr_dst->dst->name) == 0)
-		{
-			found_src = 1;
-		}
-		else
-		{
-			curr_src = curr_src->next;	
-		}
-	}
+	src_t *prev_src = _getprevsrc(src_ent->name, curr_dst->sources);
+	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
 
 	if (curr_src != NULL) {
+		// relation already exists
 		return;
-	} 
+	}
 	
 	src_t *new_src = malloc(sizeof(src_t));
 	new_src->src = src_ent;
