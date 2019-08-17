@@ -3,7 +3,6 @@
 #include <string.h>
 
 #define MAX_INPUT 100
-//#define DEBUG
 
 typedef struct ent
 {
@@ -61,11 +60,9 @@ int main(int argc, char const *argv[])
 	size_t len = 0;
 	int read = 0;
 	char *src = NULL, *dst = NULL, *rel = NULL;
-	int line = 0;
 
 	do
 	{
-		line++;
 		scanf("%s%*c", cmd);
 		if (cmd[0] == 'a')
 		{
@@ -79,15 +76,6 @@ int main(int argc, char const *argv[])
 				src[read - 1] = '\0';
 				//printf("addent: entity: '%s' (%d)\n", src, read);
 				addent(src);
-
-				#ifdef DEBUG
-				ent_t *curr = entities;
-				while (curr != NULL)
-				{
-					printf("- %s\n", curr->name);
-					curr = curr->next;
-				}
-				#endif
 			}
 			else
 			{
@@ -99,27 +87,6 @@ int main(int argc, char const *argv[])
 
 				//printf("addrel: src: '%s', dst: '%s', relation: '%s'\n", src, dst, rel);
 				addrel(src, dst, rel);
-
-				#ifdef DEBUG
-				rel_type_t *type = relations;
-				while (type != NULL)
-				{
-					printf("%s\n", type->name);
-					rel_t *curr = type->instances;
-					while (curr != NULL)
-					{
-						printf("  - %s (%d)\n", curr->dst->name, curr->count);
-						src_t *s = curr->sources;
-						while (s != NULL)
-						{
-							printf("    | %s\n", s->src->name);
-							s = s->next;
-						}
-						curr = curr->next;
-					}
-					type = type->next;
-				}
-				#endif
 			}
 		}
 		else if (cmd[0] == 'd')
@@ -132,17 +99,8 @@ int main(int argc, char const *argv[])
 				len = 0;
 				read = getline(&src, &len, stdin);
 				src[read - 1] = '\0';
-				//printf("%d delent: entity: '%s'\n", line, src);
+				//printf("delent: entity: '%s'\n", src);
 				delent(src);
-
-				#ifdef DEBUG
-				ent_t *curr = entities;
-				while (curr != NULL)
-				{
-					printf("- %s\n", curr->name);
-					curr = curr->next;
-				}
-				#endif
 			}
 			else
 			{
@@ -152,29 +110,8 @@ int main(int argc, char const *argv[])
 				rel = malloc(MAX_INPUT);
 				scanf("%s%*c%s%*c%s", src, dst, rel);
 
-				//printf("%d delrel: src: '%s', dst: '%s', relation: '%s'\n", line, src, dst, rel);
+				//printf("delrel: src: '%s', dst: '%s', relation: '%s'\n", src, dst, rel);
 				delrel(src, dst, rel);
-
-				#ifdef DEBUG
-				rel_type_t *type = relations;
-				while (type != NULL)
-				{
-					printf("%s", type->name);
-					rel_t *curr = type->instances;
-					while (curr != NULL)
-					{
-						printf("  - %s (%d)\n", curr->dst->name, curr->count);
-						src_t *s = curr->sources;
-						while (s != NULL)
-						{
-							printf("    | %s\n", s->src->name);
-							s = s->next;
-						}
-						curr = curr->next;
-					}
-					type = type->next;
-				}
-				#endif
 			}
 		}
 		else if (cmd[0] == 'r')
