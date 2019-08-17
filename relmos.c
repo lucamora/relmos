@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define MAX_INPUT 100
-#define DEBUG
+//#define DEBUG
 
 typedef struct ent
 {
@@ -39,7 +39,7 @@ typedef struct max
 } max_t;
 
 ent_t *entities = NULL;
-rel_type_t *relations;
+rel_type_t *relations = NULL;
 
 void addent(char *entity);
 void delent(char *entity);
@@ -51,7 +51,7 @@ ent_t *_getent(char *name);
 ent_t *_getprevent(char *name);
 rel_t *_getprevdst(char *name, rel_t *relation);
 src_t *_getprevsrc(char *name, src_t *sources);
-rel_t *_getreltype(char *name);
+rel_type_t *_getreltype(char *name);
 void _delsrc(char *name, rel_t *curr_dst);
 void _deldst(rel_t *prev, rel_t *curr, rel_t **relation);
 
@@ -61,9 +61,11 @@ int main(int argc, char const *argv[])
 	size_t len = 0;
 	int read = 0;
 	char *src = NULL, *dst = NULL, *rel = NULL;
+	int line = 0;
 
 	do
 	{
+		line++;
 		scanf("%s%*c", cmd);
 		if (cmd[0] == 'a')
 		{
@@ -130,7 +132,7 @@ int main(int argc, char const *argv[])
 				len = 0;
 				read = getline(&src, &len, stdin);
 				src[read - 1] = '\0';
-				//printf("delent: entity: '%s'\n", src);
+				//printf("%d delent: entity: '%s'\n", line, src);
 				delent(src);
 
 				#ifdef DEBUG
@@ -150,7 +152,7 @@ int main(int argc, char const *argv[])
 				rel = malloc(MAX_INPUT);
 				scanf("%s%*c%s%*c%s", src, dst, rel);
 
-				//printf("delrel: src: '%s', dst: '%s', relation: '%s'\n", src, dst, rel);
+				//printf("%d delrel: src: '%s', dst: '%s', relation: '%s'\n", line, src, dst, rel);
 				delrel(src, dst, rel);
 
 				#ifdef DEBUG
@@ -184,6 +186,7 @@ int main(int argc, char const *argv[])
 		else if (cmd[0] == 'e')
 		{
 			// end
+			//printf("fine\n");
 			return 0;
 		}
 	} while (1);
@@ -193,13 +196,16 @@ void addent(char *entity)
 {
 	ent_t *found = _getent(entity);
 
-	if (found == NULL)
-	{
-		ent_t *tmp = malloc(sizeof(ent_t));
-		tmp->name = entity;
-		tmp->next = entities;
-		entities = tmp;
+	if (found != NULL) {
+		// entity already exists
+		return;
 	}
+
+	// create and insert new entity
+	ent_t *tmp = malloc(sizeof(ent_t));
+	tmp->name = entity;
+	tmp->next = entities;
+	entities = tmp;
 }
 
 void delent(char *entity)
@@ -207,63 +213,74 @@ void delent(char *entity)
 	ent_t *prev_ent = _getprevent(entity);
 	ent_t *curr_ent = (prev_ent != NULL) ? prev_ent->next : entities;
 
-	if (curr_ent != NULL)
+	if (curr_ent == NULL) {
+		// entity does not exist
+		return;
+	}
+
+	// remove entity from every relation
+	rel_type_t *rel_type = relations;
+	while (rel_type != NULL)
 	{
-		rel_type_t *rel_type = relations;
-		while (rel_type != NULL)
+		rel_t *curr_dst = rel_type->instances;
+		rel_t *prev_dst = NULL;
+		while (curr_dst != NULL)
 		{
-			//rel_t *curr_dst = relation;
-			rel_t *curr_dst = rel_type->instances;
-			rel_t *prev_dst = NULL;
-			while (curr_dst != NULL)
+			if (strcmp(entity, curr_dst->dst->name) == 0)
 			{
-				if (strcmp(entity, curr_dst->dst->name) == 0)
+				// remove from destinations
+				_deldst(prev_dst, curr_dst, &rel_type->instances);
+
+				// if there is a previous dst
+				// current is its next
+				// otherwise current is the first element
+				curr_dst = (prev_dst != NULL) ? prev_dst->next : rel_type->instances;
+			}
+			else
+			{
+				// remove from sources
+				_delsrc(entity, curr_dst);
+				
+				if (curr_dst->count == 0)
 				{
+					// all relations to this entity have been deleted
 					// remove from destinations
 					_deldst(prev_dst, curr_dst, &rel_type->instances);
 
+					// if there is a previous dst
+					// current is its next
+					// otherwise current is the first element
 					curr_dst = (prev_dst != NULL) ? prev_dst->next : rel_type->instances;
 				}
 				else
 				{
-					// remove from sources
-					_delsrc(entity, curr_dst);
-					
-					if (curr_dst->count == 0)
-					{
-						_deldst(prev_dst, curr_dst, &rel_type->instances);
-
-						curr_dst = (prev_dst != NULL) ? prev_dst->next : rel_type->instances;
-					}
-					else
-					{
-						prev_dst = curr_dst;
-						curr_dst = curr_dst->next;
-					}
+					prev_dst = curr_dst;
+					curr_dst = curr_dst->next;
 				}
 			}
-
-			rel_type = rel_type->next;
 		}
 
-		// remove entity
-		if (prev_ent == NULL)
-		{
-			entities = curr_ent->next;
-		}
-		else
-		{
-			prev_ent->next = curr_ent->next;
-		}
-
-		free(curr_ent->name);
-		free(curr_ent);
-		free(entity);
+		rel_type = rel_type->next;
 	}
+
+	// remove entity
+	if (prev_ent == NULL)
+	{
+		entities = curr_ent->next;
+	}
+	else
+	{
+		prev_ent->next = curr_ent->next;
+	}
+
+	free(curr_ent->name);
+	free(curr_ent);
+	free(entity);
 }
 
 void addrel(char *src, char *dst, char *rel)
 {
+	// search if relation type already exists
 	rel_type_t *curr_type = relations;
 	rel_type_t *ins_type = NULL;
 	char found_type = 0;
@@ -284,6 +301,7 @@ void addrel(char *src, char *dst, char *rel)
 		}
 	}
 
+	// create relation type
 	if (found_type == 0)
 	{
 		rel_type_t *new_type = malloc(sizeof(rel_type_t));
@@ -306,30 +324,34 @@ void addrel(char *src, char *dst, char *rel)
 	ent_t *src_ent = _getent(src);
 	ent_t *dst_ent = _getent(dst);
 
+	if (src_ent == NULL || dst_ent == NULL) {
+		return;
+	}
+
 	free(src);
 	free(dst);
 
-	rel_t *curr = curr_type->instances;
+	rel_t *curr_dst = curr_type->instances;
 	rel_t *ins = NULL;
-	char found = 0;
-	while (curr != NULL && found == 0)
+	char found_dst = 0;
+	while (curr_dst != NULL && found_dst == 0)
 	{
-		int cmp = strcmp(dst_ent->name, curr->dst->name);
+		int cmp = strcmp(dst_ent->name, curr_dst->dst->name);
 		if (cmp == 0)
 		{
-			found = 1;
+			found_dst = 1;
 		}
 		else
 		{
 			if (cmp < 0)
 			{
-				ins = curr;
+				ins = curr_dst;
 			}
-			curr = curr->next;	
+			curr_dst = curr_dst->next;	
 		}
 	}
 
-	if (found == 0)
+	if (found_dst == 0)
 	{
 		rel_t *new_dst = malloc(sizeof(rel_t));
 		new_dst->dst = dst_ent;
@@ -347,23 +369,46 @@ void addrel(char *src, char *dst, char *rel)
 			ins->next = new_dst;
 		}
 
-		curr = new_dst;
+		curr_dst = new_dst;
 	}
 
+	src_t *curr_src = curr_dst->sources;
+	char found_src = 0;
+	while (curr_src != NULL && found_src == 0)
+	{
+		if (strcmp(dst_ent->name, curr_dst->dst->name) == 0)
+		{
+			found_src = 1;
+		}
+		else
+		{
+			curr_src = curr_src->next;	
+		}
+	}
+
+	if (curr_src != NULL) {
+		return;
+	} 
+	
 	src_t *new_src = malloc(sizeof(src_t));
 	new_src->src = src_ent;
-	new_src->next = curr->sources;
-	curr->sources = new_src;
-	curr->count = curr->count + 1;
+	new_src->next = curr_dst->sources;
+	curr_dst->sources = new_src;
+	curr_dst->count = curr_dst->count + 1;
 }
 
 void delrel(char *src, char *dst, char *rel)
 {
-	rel_t *relation = _getreltype(rel);
+	rel_type_t *relation = _getreltype(rel);
 	free(rel);
 
-	rel_t *prev_dst = _getprevdst(dst, relation);
-	rel_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : relation;
+	if (relation == NULL) {
+		// relation does not exist
+		return;
+	}
+
+	rel_t *prev_dst = _getprevdst(dst, relation->instances);
+	rel_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : relation->instances;
 
 	free(dst);
 
@@ -375,7 +420,7 @@ void delrel(char *src, char *dst, char *rel)
 
 		if (curr_dst->count == 0)
 		{
-			_deldst(prev_dst, curr_dst, &relation);
+			_deldst(prev_dst, curr_dst, &relation->instances);
 		}
 	}
 }
@@ -383,6 +428,7 @@ void delrel(char *src, char *dst, char *rel)
 void report()
 {
 	char empty = 1;
+	char first = 1;
 
 	rel_type_t *curr_type = relations;
 	while (curr_type != NULL)
@@ -426,6 +472,11 @@ void report()
 			}
 
 			max_t *tmp;
+			if (first == 0) {
+				printf(" ");
+			}
+			first = 0;
+
 			printf("%s ", curr_type->name);
 			while (dsts != NULL)
 			{
@@ -435,7 +486,8 @@ void report()
 				dsts = tmp->next;
 				free(tmp);
 			}
-			printf("%d;%c", max, (curr_type->next != NULL) ? ' ' : '\n');
+
+			printf("%d;", max);
 		}
 
 		curr_type = curr_type->next;
@@ -443,8 +495,10 @@ void report()
 
 	if (empty == 1)
 	{
-		printf("none\n");
+		printf("none");
 	}
+
+	printf("\n");
 }
 
 ent_t *_getent(char *name)
@@ -518,14 +572,14 @@ src_t *_getprevsrc(char *name, src_t *sources)
 	return prev;
 }
 
-rel_t *_getreltype(char *name)
+rel_type_t *_getreltype(char *name)
 {
 	rel_type_t *curr = relations;
 	while (curr != NULL)
 	{
 		if (strcmp(name, curr->name) == 0)
 		{
-			return curr->instances;
+			return curr;
 		}
 		curr = curr->next;
 	}
