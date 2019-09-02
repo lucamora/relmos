@@ -149,7 +149,8 @@ void addent(char *entity)
 {
 	ent_t *found = _getent(entity);
 
-	if (found != NULL) {
+	if (found != NULL)
+	{
 		// entity already exists
 		free(entity);
 		return;
@@ -167,18 +168,35 @@ void delent(char *entity)
 	ent_t *prev_ent = _getprevent(entity);
 	ent_t *curr_ent = (prev_ent != NULL) ? prev_ent->next : entities;
 
-	if (curr_ent == NULL) {
+	if (curr_ent == NULL)
+	{
 		// entity does not exist
 		free(entity);
 		return;
 	}
 
-		dst_t *curr_dst = destinations;
-		dst_t *prev_dst = NULL;
-		while (curr_dst != NULL)
+	dst_t *curr_dst = destinations;
+	dst_t *prev_dst = NULL;
+	while (curr_dst != NULL)
+	{
+		if (strcmp(entity, curr_dst->dst->name) == 0)
 		{
-			if (strcmp(entity, curr_dst->dst->name) == 0)
+			// remove from destinations
+			_deldst(prev_dst, curr_dst, &destinations);
+
+			// if there is a previous dst
+			// current is its next
+			// otherwise current is the first element
+			curr_dst = (prev_dst != NULL) ? prev_dst->next : destinations;
+		}
+		else
+		{
+			// remove from sources
+			_delsrc(entity, NULL, curr_dst);
+
+			if (curr_dst->sources == NULL)
 			{
+				// all relations to this entity have been deleted
 				// remove from destinations
 				_deldst(prev_dst, curr_dst, &destinations);
 
@@ -189,27 +207,11 @@ void delent(char *entity)
 			}
 			else
 			{
-				// remove from sources
-				_delsrc(entity, NULL, curr_dst);
-				
-				if (curr_dst->sources == NULL)
-				{
-					// all relations to this entity have been deleted
-					// remove from destinations
-					_deldst(prev_dst, curr_dst, &destinations);
-
-					// if there is a previous dst
-					// current is its next
-					// otherwise current is the first element
-					curr_dst = (prev_dst != NULL) ? prev_dst->next : destinations;
-				}
-				else
-				{
-					prev_dst = curr_dst;
-					curr_dst = curr_dst->next;
-				}
+				prev_dst = curr_dst;
+				curr_dst = curr_dst->next;
 			}
 		}
+	}
 
 	// remove entity
 	if (prev_ent == NULL)
@@ -282,7 +284,8 @@ void addrel(char *src, char *dst, char *rel)
 	free(src);
 	free(dst);
 
-	if (src_ent == NULL || dst_ent == NULL) {
+	if (src_ent == NULL || dst_ent == NULL)
+	{
 		return;
 	}
 
@@ -302,7 +305,7 @@ void addrel(char *src, char *dst, char *rel)
 			{
 				ins = curr_dst;
 			}
-			curr_dst = curr_dst->next;	
+			curr_dst = curr_dst->next;
 		}
 	}
 
@@ -330,11 +333,12 @@ void addrel(char *src, char *dst, char *rel)
 	src_t *prev_src = _getprevsrc(src_ent->name, curr_type, curr_dst->sources);
 	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
 
-	if (curr_src != NULL) {
+	if (curr_src != NULL)
+	{
 		// relation already exists
 		return;
 	}
-	
+
 	src_t *new_src = malloc(sizeof(src_t));
 	new_src->src = src_ent;
 	new_src->type = curr_type;
@@ -350,7 +354,8 @@ void delrel(char *src, char *dst, char *rel)
 	type_t *relation = _getreltype(rel);
 	free(rel);
 
-	if (relation == NULL) {
+	if (relation == NULL)
+	{
 		// relation does not exist
 		free(src);
 		free(dst);
@@ -394,62 +399,62 @@ void report()
 				curr_type->dsts = i->next;
 				free(i);
 			}
-			
+
 			curr_type = curr_type->next;
 		}
 
-	if (types != NULL)
-	{
-		// scan through destinations to fill types list
-		dst_t *curr_dst = destinations;
-		while (curr_dst != NULL)
+		if (types != NULL)
 		{
-			count_t *curr_count = curr_dst->counts;
-			while (curr_count != NULL)
+			// scan through destinations to fill types list
+			dst_t *curr_dst = destinations;
+			while (curr_dst != NULL)
 			{
-				type_t *iter = types;
-				char done = 0;
-				while (done == 0)
+				count_t *curr_count = curr_dst->counts;
+				while (curr_count != NULL)
 				{
-					if (strcmp(iter->name, curr_count->type->name) == 0)
+					type_t *iter = types;
+					char done = 0;
+					while (done == 0)
 					{
-						if (curr_count->count > iter->count)
+						if (strcmp(iter->name, curr_count->type->name) == 0)
 						{
-							iter->count = curr_count->count;
-
-							max_t *c;
-							while (iter->dsts != NULL)
+							if (curr_count->count > iter->count)
 							{
-								c = iter->dsts;
-								iter->dsts = c->next;
-								free(c);
+								iter->count = curr_count->count;
+
+								max_t *c;
+								while (iter->dsts != NULL)
+								{
+									c = iter->dsts;
+									iter->dsts = c->next;
+									free(c);
+								}
+
+								iter->dsts = malloc(sizeof(max_t));
+								iter->dsts->next = NULL;
+								iter->dsts->name = curr_dst->dst->name;
+								report_empty = 0;
 							}
-							
-							iter->dsts = malloc(sizeof(max_t));
-							iter->dsts->next = NULL;
-							iter->dsts->name = curr_dst->dst->name;
-							report_empty = 0;
-						}
-						else if (curr_count->count > 0 && curr_count->count == iter->count)
-						{
-							max_t *new = malloc(sizeof(max_t));
-							new->name = curr_dst->dst->name;
-							new->next = iter->dsts;
-							iter->dsts = new;
+							else if (curr_count->count > 0 && curr_count->count == iter->count)
+							{
+								max_t *new = malloc(sizeof(max_t));
+								new->name = curr_dst->dst->name;
+								new->next = iter->dsts;
+								iter->dsts = new;
+							}
+
+							done = 1;
 						}
 
-						done = 1;
+						iter = iter->next;
 					}
 
-					iter = iter->next;
+					curr_count = curr_count->next;
 				}
 
-				curr_count = curr_count->next;
+				curr_dst = curr_dst->next;
 			}
-
-			curr_dst = curr_dst->next;
 		}
-	}
 	}
 
 	if (report_empty == 0)
@@ -460,7 +465,8 @@ void report()
 		{
 			if (t->count > 0)
 			{
-				if (first == 0) {
+				if (first == 0)
+				{
 					printf(" ");
 				}
 				first = 0;
@@ -617,9 +623,11 @@ void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 	{
 		if (strcmp(name, curr->src->name) == 0)
 		{
-			if (rel != NULL) {
+			if (rel != NULL)
+			{
 				// remove only a relation
-				if (strcmp(rel->name, curr->type->name) == 0) {
+				if (strcmp(rel->name, curr->type->name) == 0)
+				{
 					// remove source
 					if (prev == NULL)
 					{
@@ -640,7 +648,8 @@ void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 					curr = curr->next;
 				}
 			}
-			else {
+			else
+			{
 				// remove all relations
 				// remove source
 				if (prev == NULL)
@@ -685,7 +694,7 @@ void _deldst(dst_t *prev, dst_t *curr, dst_t **relation)
 	}
 
 	count_t *c;
-	while(curr->counts != NULL)
+	while (curr->counts != NULL)
 	{
 		c = curr->counts;
 		curr->counts = c->next;
