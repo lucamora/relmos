@@ -10,9 +10,17 @@ typedef struct ent
 	struct ent *next;
 } ent_t;
 
+typedef struct max
+{
+	char *name;
+	struct max *next;
+} max_t;
+
 typedef struct typ
 {
 	char *name;
+	int count;
+	max_t *dsts;
 	struct typ *next;
 } type_t;
 
@@ -38,23 +46,11 @@ typedef struct elem
 	struct elem *next;
 } dst_t;
 
-typedef struct maxd
-{
-	char *name;
-	struct maxd *next;
-} max_dst_t;
-
-typedef struct maxt
-{
-	char *name;
-	int count;
-	max_dst_t *dsts;
-	struct maxt *next;
-} max_type_t;
-
 ent_t *entities = NULL;
 dst_t *destinations = NULL;
 type_t *types = NULL;
+char report_dirty = 0;
+char report_empty = 1;
 
 void addent(char *entity);
 void delent(char *entity);
@@ -228,6 +224,8 @@ void delent(char *entity)
 	free(curr_ent->name);
 	free(curr_ent);
 	free(entity);
+
+	report_dirty = 1;
 }
 
 void addrel(char *src, char *dst, char *rel)
@@ -245,7 +243,7 @@ void addrel(char *src, char *dst, char *rel)
 		}
 		else
 		{
-			if (cmp < 0)
+			if (cmp > 0)
 			{
 				ins_type = curr_type;
 			}
@@ -258,6 +256,8 @@ void addrel(char *src, char *dst, char *rel)
 	{
 		type_t *new_type = malloc(sizeof(type_t));
 		new_type->name = rel;
+		new_type->count = 0;
+		new_type->dsts = NULL;
 		if (ins_type == NULL)
 		{
 			new_type->next = types;
@@ -341,6 +341,8 @@ void addrel(char *src, char *dst, char *rel)
 	new_src->next = curr_dst->sources;
 	curr_dst->sources = new_src;
 	_increment(curr_dst, curr_type);
+
+	report_dirty = 1;
 }
 
 void delrel(char *src, char *dst, char *rel)
@@ -370,29 +372,33 @@ void delrel(char *src, char *dst, char *rel)
 
 	free(src);
 	free(dst);
+
+	report_dirty = 1;
 }
 
 void report()
 {
-	char empty = 1;
-	char first = 1;
-
-	// create ordered list of relation types
-	max_type_t *relations = NULL;
-	type_t *curr_type = types;
-	while (curr_type != NULL)
+	if (report_dirty == 1)
 	{
-		max_type_t *tmp = malloc(sizeof(max_type_t));
-		tmp->count = 0;
-		tmp->dsts = NULL;
-		tmp->name = curr_type->name;
-		tmp->next = relations;
-		relations = tmp;
+		report_dirty = 0;
+		report_empty = 1;
+		// clean all and recreate report
+		type_t *curr_type = types;
+		while (curr_type != NULL)
+		{
+			curr_type->count = 0;
+			max_t *i = curr_type->dsts;
+			while (curr_type->dsts != NULL)
+			{
+				i = curr_type->dsts;
+				curr_type->dsts = i->next;
+				free(i);
+			}
+			
+			curr_type = curr_type->next;
+		}
 
-		curr_type = curr_type->next;
-	}
-
-	if (relations != NULL)
+	if (types != NULL)
 	{
 		// scan through destinations to fill types list
 		dst_t *curr_dst = destinations;
@@ -401,7 +407,7 @@ void report()
 			count_t *curr_count = curr_dst->counts;
 			while (curr_count != NULL)
 			{
-				max_type_t *iter = relations;
+				type_t *iter = types;
 				char done = 0;
 				while (done == 0)
 				{
@@ -411,7 +417,7 @@ void report()
 						{
 							iter->count = curr_count->count;
 
-							max_dst_t *c;
+							max_t *c;
 							while (iter->dsts != NULL)
 							{
 								c = iter->dsts;
@@ -419,14 +425,14 @@ void report()
 								free(c);
 							}
 							
-							iter->dsts = malloc(sizeof(max_dst_t));
+							iter->dsts = malloc(sizeof(max_t));
 							iter->dsts->next = NULL;
 							iter->dsts->name = curr_dst->dst->name;
-							empty = 0;
+							report_empty = 0;
 						}
 						else if (curr_count->count > 0 && curr_count->count == iter->count)
 						{
-							max_dst_t *new = malloc(sizeof(max_dst_t));
+							max_t *new = malloc(sizeof(max_t));
 							new->name = curr_dst->dst->name;
 							new->next = iter->dsts;
 							iter->dsts = new;
@@ -444,48 +450,37 @@ void report()
 			curr_dst = curr_dst->next;
 		}
 	}
+	}
 
-	if (empty == 0)
+	if (report_empty == 0)
 	{
-		max_type_t *tmp = relations;
-		while (relations != NULL)
+		char first = 1;
+		type_t *t = types;
+		while (t != NULL)
 		{
-			if (relations->count > 0)
+			if (t->count > 0)
 			{
 				if (first == 0) {
 					printf(" ");
 				}
 				first = 0;
-				printf("%s ", relations->name);
+				printf("%s ", t->name);
 
-				max_dst_t *i = relations->dsts;
-				while (relations->dsts != NULL)
+				max_t *m = t->dsts;
+				while (m != NULL)
 				{
-					printf("%s ", relations->dsts->name);
-
-					i = relations->dsts;
-					relations->dsts = i->next;
-					free(i);
+					printf("%s ", m->name);
+					m = m->next;
 				}
 
-				printf("%d;", relations->count);
+				printf("%d;", t->count);
 			}
-			
-			tmp = relations;
-			relations = tmp->next;
-			free(tmp);
+
+			t = t->next;
 		}
 	}
 	else
 	{
-		max_type_t *tmp = relations;
-		while (relations != NULL)
-		{			
-			tmp = relations;
-			relations = tmp->next;
-			free(tmp);
-		}
-
 		printf("none");
 	}
 
@@ -509,6 +504,13 @@ void end()
 	{
 		type = types;
 		types = type->next;
+		max_t *i = type->dsts;
+		while (type->dsts != NULL)
+		{
+			i = type->dsts;
+			type->dsts = i->next;
+			free(i);
+		}
 		free(type->name);
 		free(type);
 	}
