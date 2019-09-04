@@ -45,6 +45,7 @@ void delent(char *entity);
 void addrel(char *src, char *dst, char *rel);
 void delrel(char *src, char *dst, char *rel);
 void report();
+void end();
 
 ent_t *_getent(char *name);
 ent_t *_getprevent(char *name);
@@ -124,6 +125,7 @@ int main(int argc, char const *argv[])
 		{
 			// end
 			//printf("fine\n");
+			end();
 			return 0;
 		}
 	} while (1);
@@ -135,6 +137,7 @@ void addent(char *entity)
 
 	if (found != NULL) {
 		// entity already exists
+		free(entity);
 		return;
 	}
 
@@ -152,6 +155,7 @@ void delent(char *entity)
 
 	if (curr_ent == NULL) {
 		// entity does not exist
+		free(entity);
 		return;
 	}
 
@@ -257,16 +261,21 @@ void addrel(char *src, char *dst, char *rel)
 		
 		curr_type = new_type;
 	}
+	else
+	{
+		free(rel);
+	}
+	
 
 	ent_t *src_ent = _getent(src);
 	ent_t *dst_ent = _getent(dst);
 
+	free(src);
+	free(dst);
+
 	if (src_ent == NULL || dst_ent == NULL) {
 		return;
 	}
-
-	free(src);
-	free(dst);
 
 	dst_t *curr_dst = curr_type->instances;
 	dst_t *ins = NULL;
@@ -331,25 +340,26 @@ void delrel(char *src, char *dst, char *rel)
 
 	if (relation == NULL) {
 		// relation does not exist
+		free(dst);
+		free(src);
 		return;
 	}
 
 	dst_t *prev_dst = _getprevdst(dst, relation->instances);
 	dst_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : relation->instances;
 
-	free(dst);
-
 	if (curr_dst != NULL)
 	{
 		_delsrc(src, curr_dst);
-
-		free(src);
 
 		if (curr_dst->count == 0)
 		{
 			_deldst(prev_dst, curr_dst, &relation->instances);
 		}
 	}
+
+	free(dst);
+	free(src);
 }
 
 void report()
@@ -426,6 +436,38 @@ void report()
 	}
 
 	printf("\n");
+}
+
+void end()
+{
+	// free relations and destinations
+	rel_type_t *rel;
+	while (relations != NULL)
+	{
+		rel = relations;
+		relations = rel->next;
+
+		dst_t *dst;
+		while (rel->instances != NULL)
+		{
+			dst = rel->instances;
+			rel->instances = dst->next;
+			_deldst(NULL, dst, &rel->instances);
+		}
+
+		free(rel->name);
+		free(rel);
+	}
+
+	// free entities
+	ent_t *ent;
+	while (entities != NULL)
+	{
+		ent = entities;
+		entities = ent->next;
+		free(ent->name);
+		free(ent);
+	}
 }
 
 ent_t *_getent(char *name)
