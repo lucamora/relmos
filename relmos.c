@@ -49,8 +49,6 @@ typedef struct elem
 ent_t *entities = NULL;
 dst_t *destinations = NULL;
 type_t *types = NULL;
-char report_dirty = 0;
-char report_empty = 1;
 
 void addent(char *entity);
 void delent(char *entity);
@@ -226,8 +224,6 @@ void delent(char *entity)
 	free(curr_ent->name);
 	free(curr_ent);
 	free(entity);
-
-	report_dirty = 1;
 }
 
 void addrel(char *src, char *dst, char *rel)
@@ -345,8 +341,6 @@ void addrel(char *src, char *dst, char *rel)
 	new_src->next = curr_dst->sources;
 	curr_dst->sources = new_src;
 	_increment(curr_dst, curr_type);
-
-	report_dirty = 1;
 }
 
 void delrel(char *src, char *dst, char *rel)
@@ -377,87 +371,65 @@ void delrel(char *src, char *dst, char *rel)
 
 	free(src);
 	free(dst);
-
-	report_dirty = 1;
 }
 
 void report()
 {
-	if (report_dirty == 1)
+	char empty = 1;
+	if (types != NULL)
 	{
-		report_dirty = 0;
-		report_empty = 1;
-		// clean all and recreate report
-		type_t *curr_type = types;
-		while (curr_type != NULL)
+		// scan through destinations to fill types list
+		dst_t *curr_dst = destinations;
+		while (curr_dst != NULL)
 		{
-			curr_type->count = 0;
-			max_t *i = curr_type->dsts;
-			while (curr_type->dsts != NULL)
+			count_t *curr_count = curr_dst->counts;
+			while (curr_count != NULL)
 			{
-				i = curr_type->dsts;
-				curr_type->dsts = i->next;
-				free(i);
-			}
-
-			curr_type = curr_type->next;
-		}
-
-		if (types != NULL)
-		{
-			// scan through destinations to fill types list
-			dst_t *curr_dst = destinations;
-			while (curr_dst != NULL)
-			{
-				count_t *curr_count = curr_dst->counts;
-				while (curr_count != NULL)
+				type_t *iter = types;
+				char done = 0;
+				while (done == 0)
 				{
-					type_t *iter = types;
-					char done = 0;
-					while (done == 0)
+					if (strcmp(iter->name, curr_count->type->name) == 0)
 					{
-						if (strcmp(iter->name, curr_count->type->name) == 0)
+						if (curr_count->count > iter->count)
 						{
-							if (curr_count->count > iter->count)
-							{
-								iter->count = curr_count->count;
+							iter->count = curr_count->count;
 
-								max_t *c;
-								while (iter->dsts != NULL)
-								{
-									c = iter->dsts;
-									iter->dsts = c->next;
-									free(c);
-								}
-
-								iter->dsts = malloc(sizeof(max_t));
-								iter->dsts->next = NULL;
-								iter->dsts->name = curr_dst->dst->name;
-								report_empty = 0;
-							}
-							else if (curr_count->count > 0 && curr_count->count == iter->count)
+							max_t *c;
+							while (iter->dsts != NULL)
 							{
-								max_t *new = malloc(sizeof(max_t));
-								new->name = curr_dst->dst->name;
-								new->next = iter->dsts;
-								iter->dsts = new;
+								c = iter->dsts;
+								iter->dsts = c->next;
+								free(c);
 							}
 
-							done = 1;
+							iter->dsts = malloc(sizeof(max_t));
+							iter->dsts->next = NULL;
+							iter->dsts->name = curr_dst->dst->name;
+							empty = 0;
+						}
+						else if (curr_count->count > 0 && curr_count->count == iter->count)
+						{
+							max_t *new = malloc(sizeof(max_t));
+							new->name = curr_dst->dst->name;
+							new->next = iter->dsts;
+							iter->dsts = new;
 						}
 
-						iter = iter->next;
+						done = 1;
 					}
 
-					curr_count = curr_count->next;
+					iter = iter->next;
 				}
 
-				curr_dst = curr_dst->next;
+				curr_count = curr_count->next;
 			}
+
+			curr_dst = curr_dst->next;
 		}
 	}
 
-	if (report_empty == 0)
+	if (empty == 0)
 	{
 		char first = 1;
 		type_t *t = types;
@@ -473,13 +445,17 @@ void report()
 				printf("%s ", t->name);
 
 				max_t *m = t->dsts;
-				while (m != NULL)
+				while (t->dsts != NULL)
 				{
-					printf("%s ", m->name);
-					m = m->next;
+					printf("%s ", t->dsts->name);
+
+					m = t->dsts;
+					t->dsts = m->next;
+					free(m);
 				}
 
 				printf("%d;", t->count);
+				t->count = 0;
 			}
 
 			t = t->next;
