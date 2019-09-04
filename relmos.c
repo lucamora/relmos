@@ -60,7 +60,7 @@ void end();
 ent_t *_getent(char *name);
 ent_t *_getprevent(char *name);
 dst_t *_getprevdst(char *name, dst_t *relation);
-src_t *_getprevsrc(char *name, type_t *rel, src_t *sources);
+src_t *_getprevsrc(ent_t *src, type_t *rel, src_t *sources);
 type_t *_getreltype(char *name);
 void _delsrc(char *name, type_t *rel, dst_t *curr_dst);
 void _deldst(dst_t *prev, dst_t *curr, dst_t **relation);
@@ -177,7 +177,7 @@ void delent(char *entity)
 	dst_t *prev_dst = NULL;
 	while (curr_dst != NULL)
 	{
-		if (strcmp(entity, curr_dst->dst->name) == 0)
+		if (curr_ent == curr_dst->dst)
 		{
 			// remove from destinations
 			_deldst(prev_dst, curr_dst, &destinations);
@@ -326,7 +326,7 @@ void addrel(char *src, char *dst, char *rel)
 		curr_dst = new_dst;
 	}
 
-	src_t *prev_src = _getprevsrc(src_ent->name, curr_type, curr_dst->sources);
+	src_t *prev_src = _getprevsrc(src_ent, curr_type, curr_dst->sources);
 	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
 
 	if (curr_src != NULL)
@@ -389,7 +389,7 @@ void report()
 				char done = 0;
 				while (done == 0)
 				{
-					if (strcmp(iter->name, curr_count->type->name) == 0)
+					if (iter == curr_count->type)
 					{
 						if (curr_count->count > iter->count)
 						{
@@ -558,13 +558,13 @@ dst_t *_getprevdst(char *name, dst_t *relation)
 	return prev;
 }
 
-src_t *_getprevsrc(char *name, type_t *rel, src_t *sources)
+src_t *_getprevsrc(ent_t *src, type_t *rel, src_t *sources)
 {
 	src_t *curr = sources;
 	src_t *prev = NULL;
 	while (curr != NULL)
 	{
-		if (strcmp(name, curr->src->name) == 0 && strcmp(rel->name, curr->type->name) == 0)
+		if (src == curr->src && rel == curr->type)
 		{
 			return prev;
 		}
@@ -602,7 +602,7 @@ void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 			if (rel != NULL)
 			{
 				// remove only a relation
-				if (strcmp(rel->name, curr->type->name) == 0)
+				if (rel == curr->type)
 				{
 					// remove source
 					if (prev == NULL)
@@ -685,7 +685,7 @@ void _increment(dst_t *dst, type_t *type)
 	count_t *curr = dst->counts;
 	while (curr != NULL)
 	{
-		if (strcmp(type->name, curr->type->name) == 0)
+		if (type == curr->type)
 		{
 			curr->count++;
 			return;
@@ -705,7 +705,7 @@ void _decrement(dst_t *dst, type_t *type)
 	count_t *curr = dst->counts;
 	while (curr != NULL)
 	{
-		if (strcmp(type->name, curr->type->name) == 0)
+		if (type == curr->type)
 		{
 			curr->count--;
 			return;
