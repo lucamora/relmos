@@ -6,7 +6,7 @@
 
 typedef struct node
 {
-	char *data;
+	void *data;
 	char color;
 	struct node *left, *right, *parent;
 } node_t;
@@ -42,14 +42,25 @@ typedef struct cnt
 	struct cnt *next;
 } count_t;
 
-typedef struct elem
+/*typedef struct elem
 {
 	char *dst;
 	count_t *counts;
 	src_t *sources;
 	struct elem *next;
+} dst_t;*/
+typedef struct
+{
+	char *dst;
+	count_t *counts;
+	src_t *sources;
 } dst_t;
 
+typedef struct del
+{
+	node_t *node;
+	struct del *next;
+} del_t;
 
 
 void addent(char *entity);
@@ -60,13 +71,16 @@ void report();
 void end();
 
 
-dst_t *_getprevdst(char *name, dst_t *relation);
-src_t *_getprevsrc(node_t *src, type_t *rel, src_t *sources);
+//dst_t *_getprevdst(char *name, dst_t *relation);
+src_t *_getprevsrc(char *src, type_t *rel, src_t *sources);
 type_t *_getreltype(char *name);
 void _delsrc(char *name, type_t *rel, dst_t *curr_dst);
-void _deldst(dst_t *prev, dst_t *curr, dst_t **relation);
+//void _deldst(dst_t *prev, dst_t *curr, dst_t **relation);
+void _delent(node_t *x, char *ent);
+void _finddeldst(node_t *x, char *ent);
 void _increment(dst_t *dst, type_t *type);
 void _decrement(dst_t *dst, type_t *type);
+int megapoop(node_t *x);
 
 
 
@@ -76,11 +90,16 @@ void tree_insert_fixup(node_t **root, node_t *z);
 void tree_delete_fixup(node_t **root, node_t *x);
 node_t *tree_minimum(node_t *x);
 node_t *tree_successor(node_t *x);
-void tree_dispose(node_t *x);
 
 node_t *entities_search(node_t *node, char *ent);
 int entities_insert(node_t **root, char *ent);
 void entities_delete(node_t **root, node_t *z);
+void entities_dispose(node_t *x);
+
+node_t *destinations_search(node_t *node, char *ent);
+dst_t *destinations_insert(node_t **root, char *ent);
+void destinations_delete(node_t **root, node_t *z);
+void destinations_dispose(node_t *x);
 
 #define NIL (&nil)
 static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
@@ -88,8 +107,10 @@ static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
 
 
 node_t *entities = NIL;
-dst_t *destinations = NULL;
+node_t *destinations = NIL;
 type_t *types = NULL;
+
+del_t *todelete = NULL;
 
 
 int main(int argc, char const *argv[])
@@ -177,18 +198,19 @@ void delent(char *entity)
 {
 	node_t *curr_ent = entities_search(entities, entity);
 
+	free(entity);
+
 	if (curr_ent == NULL)
 	{
 		// entity does not exist
-		free(entity);
 		return;
 	}
 
-	dst_t *curr_dst = destinations;
+	/*dst_t *curr_dst = destinations;
 	dst_t *prev_dst = NULL;
 	while (curr_dst != NULL)
 	{
-		if (curr_ent->data == curr_dst->dst)
+		if (curr_ent == curr_dst->dst)
 		{
 			// remove from destinations
 			_deldst(prev_dst, curr_dst, &destinations);
@@ -224,7 +246,162 @@ void delent(char *entity)
 
 	// remove entity
 	entities_delete(&entities, curr_ent);
-	free(entity);
+	free(entity);*/
+
+	//_delent(destinations, (char *)curr_ent->data);
+	//del_t *list = _finddeldst(destinations, (char *)curr_ent->data);
+	_finddeldst(destinations, (char *)curr_ent->data);
+
+	del_t *i;
+	while (todelete != NULL)
+	{
+		destinations_delete(&destinations, todelete->node);
+		i = todelete;
+		todelete = i->next;
+		free(i);
+	}
+
+	entities_delete(&entities, curr_ent);
+}
+
+void _finddeldst(node_t *x, char *ent)
+{
+	/*if (x == NIL)
+		return NULL;
+
+	del_t *sub = NULL;
+	del_t *ins = sub;
+
+	del_t *del = malloc(sizeof(del_t));
+	del->node = x;
+	ins = del;
+
+	ins->next = _finddeldst(x->left, ent);
+	ins = ins->next;
+	
+	ins->next = _finddeldst(x->right, ent);
+
+	return sub;*/
+
+
+	if (x == NIL)
+		return;
+
+	if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
+	{
+		del_t *del = malloc(sizeof(del_t));
+		del->node = x;
+		del->next = todelete;
+		todelete = del;
+	}
+	else
+	{
+		_delsrc(ent, NULL, (dst_t *)x->data);
+
+		if (((dst_t *)x->data)->sources == NULL)
+		{
+			del_t *del = malloc(sizeof(del_t));
+			del->node = x;
+			del->next = todelete;
+			todelete = del;
+		}
+	}
+
+	_finddeldst(x->left, ent);
+	_finddeldst(x->right, ent);
+
+	/*del_t *sub = NULL;
+	del_t *ins = NULL;
+
+
+	if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
+	{
+		del_t *del = malloc(sizeof(del_t));
+		del->node = x;
+		sub = del;
+		ins = del;
+	}
+	else
+	{
+		_delsrc(ent, NULL, (dst_t *)x->data);
+
+		if (((dst_t *)x->data)->sources == NULL)
+		{
+			del_t *del = malloc(sizeof(del_t));
+			del->node = x;
+			sub = del;
+			ins = del;
+		}
+	}
+
+
+	del_t *l = _finddeldst(x->left, ent);
+	if (ins == NULL)
+	{
+		sub = l;
+		ins = l;
+	}
+	else
+		ins->next = l;
+	
+	if (l != NULL)
+		ins = ins->next;
+
+
+	del_t *r = _finddeldst(x->right, ent);
+	if (ins == NULL)
+	{
+		sub = r;
+		ins = r;
+	}
+	else
+		ins->next = r;
+
+	return sub;*/
+
+
+	
+	//if (((dst_t *)x->data)->dst == ent)
+	/*if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
+	{
+		del_t *del = malloc(sizeof(del_t));
+		del->node = x;
+		del->next = NULL;
+		if (ins != NULL)
+			ins->next = del;
+		ins = del;
+		//destinations_delete(&destinations, x);
+	}
+	else
+	{
+		_delsrc(ent, NULL, (dst_t *)x->data);
+
+		if (((dst_t *)x->data)->sources == NULL)
+		{
+			del_t *del = malloc(sizeof(del_t));
+			del->node = x;
+			del->next = NULL;
+			if (ins != NULL)
+				ins->next = del;
+			ins = del;
+			//destinations_delete(&destinations, x);
+		}
+	}
+
+	del_t *l = _finddeldst(x->left, ent);
+	del_t *r = _finddeldst(x->right, ent);
+
+	if (l != NULL)
+		ins = l;
+
+	if (r != NULL)
+	{
+		if (ins != NULL)
+			ins->next = r;
+		ins = r;
+	}
+
+	return sub;*/
 }
 
 void addrel(char *src, char *dst, char *rel)
@@ -275,18 +452,21 @@ void addrel(char *src, char *dst, char *rel)
 		free(rel);
 	}
 
-	node_t *src_ent = entities_search(entities, src);
-	node_t *dst_ent = entities_search(entities, dst);
+	node_t *src_node = entities_search(entities, src);
+	node_t *dst_node = entities_search(entities, dst);
 
 	free(src);
 	free(dst);
 
-	if (src_ent == NULL || dst_ent == NULL)
+	if (src_node == NULL || dst_node == NULL)
 	{
 		return;
 	}
 
-	dst_t *curr_dst = destinations;
+	char *src_ent = (char *)src_node->data;
+	char *dst_ent = (char *)dst_node->data;
+
+	/*dst_t *curr_dst = destinations;
 	dst_t *ins = NULL;
 	char found_dst = 0;
 	while (curr_dst != NULL && found_dst == 0)
@@ -325,7 +505,8 @@ void addrel(char *src, char *dst, char *rel)
 		}
 
 		curr_dst = new_dst;
-	}
+	}*/
+	dst_t *curr_dst = destinations_insert(&destinations, dst_ent);
 
 	src_t *prev_src = _getprevsrc(src_ent, curr_type, curr_dst->sources);
 	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
@@ -337,7 +518,7 @@ void addrel(char *src, char *dst, char *rel)
 	}
 
 	src_t *new_src = malloc(sizeof(src_t));
-	new_src->src = src_ent->data;
+	new_src->src = src_ent;
 	new_src->type = curr_type;
 	new_src->next = curr_dst->sources;
 	curr_dst->sources = new_src;
@@ -357,16 +538,18 @@ void delrel(char *src, char *dst, char *rel)
 		return;
 	}
 
-	dst_t *prev_dst = _getprevdst(dst, destinations);
-	dst_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : destinations;
+	//dst_t *prev_dst = _getprevdst(dst, destinations);
+	//dst_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : destinations;
+	node_t *curr_dst = destinations_search(destinations, dst);
 
 	if (curr_dst != NULL)
 	{
-		_delsrc(src, relation, curr_dst);
+		_delsrc(src, relation, (dst_t *)curr_dst->data);
 
-		if (curr_dst->sources == NULL)
+		if (((dst_t *)curr_dst)->sources == NULL)
 		{
-			_deldst(prev_dst, curr_dst, &destinations);
+			//_deldst(prev_dst, curr_dst, &destinations);
+			destinations_delete(&destinations, curr_dst);
 		}
 	}
 
@@ -376,11 +559,12 @@ void delrel(char *src, char *dst, char *rel)
 
 void report()
 {
-	char empty = 1;
+	//char empty = 1;
+	int added = 0;
 	if (types != NULL)
 	{
 		// scan through destinations to fill types list
-		dst_t *curr_dst = destinations;
+		/*dst_t *curr_dst = destinations;
 		while (curr_dst != NULL)
 		{
 			count_t *curr_count = curr_dst->counts;
@@ -427,10 +611,12 @@ void report()
 			}
 
 			curr_dst = curr_dst->next;
-		}
+		}*/
+
+		added = megapoop(destinations);
 	}
 
-	if (empty == 0)
+	if (added > 0)
 	{
 		char first = 1;
 		type_t *t = types;
@@ -470,16 +656,70 @@ void report()
 	printf("\n");
 }
 
+int megapoop(node_t *x)
+{
+	if (x == NIL)
+		return 0;
+	
+	int added = megapoop(x->right);
+
+	count_t *count = ((dst_t *)x->data)->counts;
+	while (count != NULL)
+	{
+		type_t *iter = types;
+		char done = 0;
+		while (done == 0)
+		{
+			if (iter == count->type)
+			{
+				if (count->count > iter->count)
+				{
+					iter->count = count->count;
+
+					max_t *c;
+					while (iter->dsts != NULL)
+					{
+						c = iter->dsts;
+						iter->dsts = c->next;
+						free(c);
+					}
+
+					iter->dsts = malloc(sizeof(max_t));
+					iter->dsts->next = NULL;
+					iter->dsts->name = ((dst_t *)x->data)->dst;
+					added += 1;
+				}
+				else if (count->count > 0 && count->count == iter->count)
+				{
+					max_t *new = malloc(sizeof(max_t));
+					new->name = ((dst_t *)x->data)->dst;
+					new->next = iter->dsts;
+					iter->dsts = new;
+				}
+
+				done = 1;
+			}
+
+			iter = iter->next;
+		}
+
+		count = count->next;
+	}
+
+	return added + megapoop(x->left);
+}
+
 void end()
 {
 	// free destinations
-	dst_t *dst;
+	destinations_dispose(destinations);
+	/*dst_t *dst;
 	while (destinations != NULL)
 	{
 		dst = destinations;
 		destinations = dst->next;
 		_deldst(NULL, dst, &destinations);
-	}
+	}*/
 
 	// free types
 	type_t *type;
@@ -499,10 +739,10 @@ void end()
 	}
 
 	// free entities
-	tree_dispose(entities);
+	entities_dispose(entities);
 }
 
-dst_t *_getprevdst(char *name, dst_t *relation)
+/*dst_t *_getprevdst(char *name, dst_t *relation)
 {
 	dst_t *curr = relation;
 	dst_t *prev = NULL;
@@ -519,15 +759,15 @@ dst_t *_getprevdst(char *name, dst_t *relation)
 		}
 	}
 	return prev;
-}
+}*/
 
-src_t *_getprevsrc(node_t *src, type_t *rel, src_t *sources)
+src_t *_getprevsrc(char *src, type_t *rel, src_t *sources)
 {
 	src_t *curr = sources;
 	src_t *prev = NULL;
 	while (curr != NULL)
 	{
-		if (src->data == curr->src && rel == curr->type)
+		if (src == curr->src && rel == curr->type)
 		{
 			return prev;
 		}
@@ -560,7 +800,7 @@ void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 	src_t *prev = NULL;
 	while (curr != NULL)
 	{
-		if (strcmp(name, (char *)curr->src) == 0)
+		if (strcmp(name, curr->src) == 0)
 		{
 			if (rel != NULL)
 			{
@@ -613,7 +853,7 @@ void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 	}
 }
 
-void _deldst(dst_t *prev, dst_t *curr, dst_t **relation)
+/*void _deldst(dst_t *prev, dst_t *curr, dst_t **relation)
 {
 	if (prev == NULL)
 	{
@@ -641,6 +881,29 @@ void _deldst(dst_t *prev, dst_t *curr, dst_t **relation)
 	}
 
 	free(curr);
+}*/
+void _delent(node_t *x, char *ent)
+{
+	if (x == NIL)
+		return;
+
+	_delent(x->left, ent);
+	_delent(x->right, ent);
+	
+	//if (((dst_t *)x->data)->dst == ent)
+	if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
+	{
+		//destinations_delete(&destinations, x);
+	}
+	else
+	{
+		_delsrc(ent, NULL, (dst_t *)x->data);
+
+		if (((dst_t *)x->data)->sources == NULL)
+		{
+			//destinations_delete(&destinations, x);
+		}
+	}
 }
 
 void _increment(dst_t *dst, type_t *type)
@@ -864,16 +1127,7 @@ node_t *tree_successor(node_t *x)
 	return y;
 }
 
-void tree_dispose(node_t *x)
-{
-	if (x != NIL)
-	{
-		tree_dispose(x->left);
-		tree_dispose(x->right);
-		free(x->data);
-		free(x);
-	}
-}
+
 
 node_t *entities_search(node_t *node, char *ent)
 {
@@ -956,4 +1210,146 @@ void entities_delete(node_t **root, node_t *z)
 		tree_delete_fixup(root, x);
 
 	free(y);
+}
+
+void entities_dispose(node_t *x)
+{
+	if (x != NIL)
+	{
+		entities_dispose(x->left);
+		entities_dispose(x->right);
+		free(x->data);
+		free(x);
+	}
+}
+
+
+
+node_t *destinations_search(node_t *node, char *ent)
+{
+	node_t *curr = node;
+	while (curr != NIL)
+	{
+		int cmp = strcmp(ent, (((dst_t *)curr->data)->dst));
+		if (cmp == 0)
+			return curr;
+		if (cmp < 0)
+			curr = curr->left;
+		else
+			curr = curr->right;
+	}
+	return NULL;
+}
+
+dst_t *destinations_insert(node_t **root, char *ent)
+{
+	node_t *y = NIL;
+	node_t *x = (*root);
+	while (x != NIL)
+	{
+		y = x;
+		int cmp = strcmp(ent, ((dst_t *)x->data)->dst);
+		if (cmp == 0)
+		{
+			return (dst_t *)x->data;
+		}
+		else if (cmp < 0)
+			x = x->left;
+		else
+			x = x->right;
+	}
+
+	node_t *z = malloc(sizeof(node_t));
+	z->data = malloc(sizeof(dst_t));
+	((dst_t *)z->data)->counts = NULL;
+	((dst_t *)z->data)->sources = NULL;
+	((dst_t *)z->data)->dst = ent;
+	z->parent = y;
+	if (y == NIL)
+		(*root) = z;
+	else if (strcmp(ent, ((dst_t *)y->data)->dst) < 0)
+		y->left = z;
+	else
+		y->right = z;
+	z->left = NIL;
+	z->right = NIL;
+	z->color = RED;
+	tree_insert_fixup(root, z);
+
+	return z->data;
+}
+
+void destinations_delete(node_t **root, node_t *z)
+{
+	src_t *s;
+	while (((dst_t *)z->data)->sources != NULL)
+	{
+		s = ((dst_t *)z->data)->sources;
+		((dst_t *)z->data)->sources = s->next;
+		free(s);
+	}
+
+	count_t *c;
+	while (((dst_t *)z->data)->counts != NULL)
+	{
+		c = ((dst_t *)z->data)->counts;
+		((dst_t *)z->data)->counts = c->next;
+		free(c);
+	}
+
+	free((dst_t *)z->data);
+
+	node_t *y, *x;
+	if (z->left == NIL || z->right == NIL)
+		y = z;
+	else
+	{
+		y = tree_successor(z);
+	}
+	if (y->left != NIL)
+		x = y->left;
+	else
+		x = y->right;
+	x->parent = y->parent;
+	if (y->parent == NIL)
+		(*root) = x;
+	else if (y == y->parent->left)
+		y->parent->left = x;
+	else
+		y->parent->right = x;
+	if (y != z)
+		z->data = y->data;
+
+	if (y->color == BLACK)
+		tree_delete_fixup(root, x);
+
+	free(y);
+}
+
+void destinations_dispose(node_t *x)
+{
+	if (x != NIL)
+	{
+		destinations_dispose(x->left);
+		destinations_dispose(x->right);
+
+		src_t *s;
+		while (((dst_t *)x->data)->sources != NULL)
+		{
+			s = ((dst_t *)x->data)->sources;
+			((dst_t *)x->data)->sources = s->next;
+			free(s);
+		}
+
+		count_t *c;
+		while (((dst_t *)x->data)->counts != NULL)
+		{
+			c = ((dst_t *)x->data)->counts;
+			((dst_t *)x->data)->counts = c->next;
+			free(c);
+		}
+
+		free((dst_t *)x->data);
+		free(x);
+	}
 }
