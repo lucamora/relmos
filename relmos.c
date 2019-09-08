@@ -3,6 +3,8 @@
 #include <string.h>
 
 #define MAX_INPUT 100
+#define RED 'r'
+#define BLACK 'b'
 
 typedef struct node
 {
@@ -10,9 +12,6 @@ typedef struct node
 	char color;
 	struct node *left, *right, *parent;
 } node_t;
-
-#define RED 'r'
-#define BLACK 'b'
 
 typedef struct max
 {
@@ -42,13 +41,6 @@ typedef struct cnt
 	struct cnt *next;
 } count_t;
 
-/*typedef struct elem
-{
-	char *dst;
-	count_t *counts;
-	src_t *sources;
-	struct elem *next;
-} dst_t;*/
 typedef struct
 {
 	char *dst;
@@ -71,19 +63,17 @@ void report();
 void end();
 
 
-//dst_t *_getprevdst(char *name, dst_t *relation);
+// private helper function
 src_t *_getprevsrc(char *src, type_t *rel, src_t *sources);
 type_t *_getreltype(char *name);
 void _delsrc(char *name, type_t *rel, dst_t *curr_dst);
-//void _deldst(dst_t *prev, dst_t *curr, dst_t **relation);
-void _delent(node_t *x, char *ent);
-void _finddeldst(node_t *x, char *ent);
+void _finddeldst(node_t *x, char *ent, del_t **list);
 void _increment(dst_t *dst, type_t *type);
 void _decrement(dst_t *dst, type_t *type);
-int megapoop(node_t *x);
+int _buildreport(node_t *x);
 
 
-
+// tree operations
 void tree_left_rotate(node_t **root, node_t *x);
 void tree_right_rotate(node_t **root, node_t *x);
 void tree_insert_fixup(node_t **root, node_t *z);
@@ -105,12 +95,10 @@ void destinations_dispose(node_t *x);
 static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
 
 
-
+// main data structures
 node_t *entities = NIL;
 node_t *destinations = NIL;
 type_t *types = NULL;
-
-del_t *todelete = NULL;
 
 
 int main(int argc, char const *argv[])
@@ -196,212 +184,31 @@ void addent(char *entity)
 
 void delent(char *entity)
 {
+	// lookup entity
 	node_t *curr_ent = entities_search(entities, entity);
 
 	free(entity);
 
+	// entity does not exist
 	if (curr_ent == NULL)
-	{
-		// entity does not exist
 		return;
-	}
 
-	/*dst_t *curr_dst = destinations;
-	dst_t *prev_dst = NULL;
-	while (curr_dst != NULL)
-	{
-		if (curr_ent == curr_dst->dst)
-		{
-			// remove from destinations
-			_deldst(prev_dst, curr_dst, &destinations);
+	// get a list of destinations to delete
+	del_t *delete = NULL;
+	_finddeldst(destinations, (char *)curr_ent->data, &delete);
 
-			// if there is a previous dst
-			// current is its next
-			// otherwise current is the first element
-			curr_dst = (prev_dst != NULL) ? prev_dst->next : destinations;
-		}
-		else
-		{
-			// remove from sources
-			_delsrc(entity, NULL, curr_dst);
-
-			if (curr_dst->sources == NULL)
-			{
-				// all relations to this entity have been deleted
-				// remove from destinations
-				_deldst(prev_dst, curr_dst, &destinations);
-
-				// if there is a previous dst
-				// current is its next
-				// otherwise current is the first element
-				curr_dst = (prev_dst != NULL) ? prev_dst->next : destinations;
-			}
-			else
-			{
-				prev_dst = curr_dst;
-				curr_dst = curr_dst->next;
-			}
-		}
-	}
-
-	// remove entity
-	entities_delete(&entities, curr_ent);
-	free(entity);*/
-
-	//_delent(destinations, (char *)curr_ent->data);
-	//del_t *list = _finddeldst(destinations, (char *)curr_ent->data);
-	_finddeldst(destinations, (char *)curr_ent->data);
-
+	// delete destinations
 	del_t *i;
-	while (todelete != NULL)
+	while (delete != NULL)
 	{
-		destinations_delete(&destinations, todelete->node);
-		i = todelete;
-		todelete = i->next;
+		destinations_delete(&destinations, delete->node);
+		i = delete;
+		delete = i->next;
 		free(i);
 	}
 
+	// delete entity
 	entities_delete(&entities, curr_ent);
-}
-
-void _finddeldst(node_t *x, char *ent)
-{
-	/*if (x == NIL)
-		return NULL;
-
-	del_t *sub = NULL;
-	del_t *ins = sub;
-
-	del_t *del = malloc(sizeof(del_t));
-	del->node = x;
-	ins = del;
-
-	ins->next = _finddeldst(x->left, ent);
-	ins = ins->next;
-	
-	ins->next = _finddeldst(x->right, ent);
-
-	return sub;*/
-
-
-	if (x == NIL)
-		return;
-
-	if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
-	{
-		del_t *del = malloc(sizeof(del_t));
-		del->node = x;
-		del->next = todelete;
-		todelete = del;
-	}
-	else
-	{
-		_delsrc(ent, NULL, (dst_t *)x->data);
-
-		if (((dst_t *)x->data)->sources == NULL)
-		{
-			del_t *del = malloc(sizeof(del_t));
-			del->node = x;
-			del->next = todelete;
-			todelete = del;
-		}
-	}
-
-	_finddeldst(x->left, ent);
-	_finddeldst(x->right, ent);
-
-	/*del_t *sub = NULL;
-	del_t *ins = NULL;
-
-
-	if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
-	{
-		del_t *del = malloc(sizeof(del_t));
-		del->node = x;
-		sub = del;
-		ins = del;
-	}
-	else
-	{
-		_delsrc(ent, NULL, (dst_t *)x->data);
-
-		if (((dst_t *)x->data)->sources == NULL)
-		{
-			del_t *del = malloc(sizeof(del_t));
-			del->node = x;
-			sub = del;
-			ins = del;
-		}
-	}
-
-
-	del_t *l = _finddeldst(x->left, ent);
-	if (ins == NULL)
-	{
-		sub = l;
-		ins = l;
-	}
-	else
-		ins->next = l;
-	
-	if (l != NULL)
-		ins = ins->next;
-
-
-	del_t *r = _finddeldst(x->right, ent);
-	if (ins == NULL)
-	{
-		sub = r;
-		ins = r;
-	}
-	else
-		ins->next = r;
-
-	return sub;*/
-
-
-	
-	//if (((dst_t *)x->data)->dst == ent)
-	/*if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
-	{
-		del_t *del = malloc(sizeof(del_t));
-		del->node = x;
-		del->next = NULL;
-		if (ins != NULL)
-			ins->next = del;
-		ins = del;
-		//destinations_delete(&destinations, x);
-	}
-	else
-	{
-		_delsrc(ent, NULL, (dst_t *)x->data);
-
-		if (((dst_t *)x->data)->sources == NULL)
-		{
-			del_t *del = malloc(sizeof(del_t));
-			del->node = x;
-			del->next = NULL;
-			if (ins != NULL)
-				ins->next = del;
-			ins = del;
-			//destinations_delete(&destinations, x);
-		}
-	}
-
-	del_t *l = _finddeldst(x->left, ent);
-	del_t *r = _finddeldst(x->right, ent);
-
-	if (l != NULL)
-		ins = l;
-
-	if (r != NULL)
-	{
-		if (ins != NULL)
-			ins->next = r;
-		ins = r;
-	}
-
-	return sub;*/
 }
 
 void addrel(char *src, char *dst, char *rel)
@@ -452,73 +259,31 @@ void addrel(char *src, char *dst, char *rel)
 		free(rel);
 	}
 
-	node_t *src_node = entities_search(entities, src);
-	node_t *dst_node = entities_search(entities, dst);
+	// lookup entities
+	node_t *src_ent = entities_search(entities, src);
+	node_t *dst_ent = entities_search(entities, dst);
 
 	free(src);
 	free(dst);
 
-	if (src_node == NULL || dst_node == NULL)
-	{
+	// an entity does not exist
+	if (src_ent == NULL || dst_ent == NULL)
 		return;
-	}
 
-	char *src_ent = (char *)src_node->data;
-	char *dst_ent = (char *)dst_node->data;
+	// create destination (if does not already exist)
+	dst_t *curr_dst = destinations_insert(&destinations, (char *)dst_ent->data);
 
-	/*dst_t *curr_dst = destinations;
-	dst_t *ins = NULL;
-	char found_dst = 0;
-	while (curr_dst != NULL && found_dst == 0)
-	{
-		int cmp = strcmp((char *)dst_ent->data, curr_dst->dst);
-		if (cmp == 0)
-		{
-			found_dst = 1;
-		}
-		else
-		{
-			if (cmp < 0)
-			{
-				ins = curr_dst;
-			}
-			curr_dst = curr_dst->next;
-		}
-	}
-
-	if (found_dst == 0)
-	{
-		dst_t *new_dst = malloc(sizeof(dst_t));
-		new_dst->dst = dst_ent->data;
-		new_dst->counts = NULL;
-		new_dst->sources = NULL;
-
-		if (ins == NULL)
-		{
-			new_dst->next = destinations;
-			destinations = new_dst;
-		}
-		else
-		{
-			new_dst->next = ins->next;
-			ins->next = new_dst;
-		}
-
-		curr_dst = new_dst;
-	}*/
-	dst_t *curr_dst = destinations_insert(&destinations, dst_ent);
-
-	src_t *prev_src = _getprevsrc(src_ent, curr_type, curr_dst->sources);
+	// create source (if does not already exist)
+	src_t *prev_src = _getprevsrc((char *)src_ent->data, curr_type, curr_dst->sources);
 	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
 
+	// relation already exists
 	if (curr_src != NULL)
-	{
-		// relation already exists
 		return;
-	}
 
+	// create source
 	src_t *new_src = malloc(sizeof(src_t));
-	new_src->src = src_ent;
+	new_src->src = (char *)src_ent->data;
 	new_src->type = curr_type;
 	new_src->next = curr_dst->sources;
 	curr_dst->sources = new_src;
@@ -527,93 +292,44 @@ void addrel(char *src, char *dst, char *rel)
 
 void delrel(char *src, char *dst, char *rel)
 {
+	// lookup relation type
 	type_t *relation = _getreltype(rel);
 	free(rel);
 
-	if (relation == NULL)
-	{
-		// relation does not exist
-		free(src);
-		free(dst);
-		return;
-	}
-
-	//dst_t *prev_dst = _getprevdst(dst, destinations);
-	//dst_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : destinations;
-	node_t *curr_dst = destinations_search(destinations, dst);
-
-	if (curr_dst != NULL)
-	{
-		_delsrc(src, relation, (dst_t *)curr_dst->data);
-
-		if (((dst_t *)curr_dst)->sources == NULL)
-		{
-			//_deldst(prev_dst, curr_dst, &destinations);
-			destinations_delete(&destinations, curr_dst);
-		}
-	}
+	// lookup entities
+	node_t *src_ent = entities_search(entities, src);
+	node_t *dst_ent = entities_search(entities, dst);
 
 	free(src);
 	free(dst);
+
+	// relation or an entity does not exist
+	if (relation == NULL || src_ent == NULL || dst_ent == NULL)
+		return;
+
+	node_t *curr_dst = destinations_search(destinations, (char *)dst_ent->data);
+
+	// destination does not exist
+	if (curr_dst == NULL)
+		return;
+	
+	// delete source
+	_delsrc((char *)src_ent->data, relation, (dst_t *)curr_dst->data);
+
+	// delete destination if does not have any source
+	if (((dst_t *)curr_dst)->sources == NULL)
+	{
+		destinations_delete(&destinations, curr_dst);
+	}
 }
 
 void report()
 {
-	//char empty = 1;
+	// number of items added to the report
 	int added = 0;
 	if (types != NULL)
 	{
-		// scan through destinations to fill types list
-		/*dst_t *curr_dst = destinations;
-		while (curr_dst != NULL)
-		{
-			count_t *curr_count = curr_dst->counts;
-			while (curr_count != NULL)
-			{
-				type_t *iter = types;
-				char done = 0;
-				while (done == 0)
-				{
-					if (iter == curr_count->type)
-					{
-						if (curr_count->count > iter->count)
-						{
-							iter->count = curr_count->count;
-
-							max_t *c;
-							while (iter->dsts != NULL)
-							{
-								c = iter->dsts;
-								iter->dsts = c->next;
-								free(c);
-							}
-
-							iter->dsts = malloc(sizeof(max_t));
-							iter->dsts->next = NULL;
-							iter->dsts->name = curr_dst->dst;
-							empty = 0;
-						}
-						else if (curr_count->count > 0 && curr_count->count == iter->count)
-						{
-							max_t *new = malloc(sizeof(max_t));
-							new->name = curr_dst->dst;
-							new->next = iter->dsts;
-							iter->dsts = new;
-						}
-
-						done = 1;
-					}
-
-					iter = iter->next;
-				}
-
-				curr_count = curr_count->next;
-			}
-
-			curr_dst = curr_dst->next;
-		}*/
-
-		added = megapoop(destinations);
+		added = _buildreport(destinations);
 	}
 
 	if (added > 0)
@@ -625,9 +341,7 @@ void report()
 			if (t->count > 0)
 			{
 				if (first == 0)
-				{
 					printf(" ");
-				}
 				first = 0;
 				printf("%s ", t->name);
 
@@ -656,70 +370,10 @@ void report()
 	printf("\n");
 }
 
-int megapoop(node_t *x)
-{
-	if (x == NIL)
-		return 0;
-	
-	int added = megapoop(x->right);
-
-	count_t *count = ((dst_t *)x->data)->counts;
-	while (count != NULL)
-	{
-		type_t *iter = types;
-		char done = 0;
-		while (done == 0)
-		{
-			if (iter == count->type)
-			{
-				if (count->count > iter->count)
-				{
-					iter->count = count->count;
-
-					max_t *c;
-					while (iter->dsts != NULL)
-					{
-						c = iter->dsts;
-						iter->dsts = c->next;
-						free(c);
-					}
-
-					iter->dsts = malloc(sizeof(max_t));
-					iter->dsts->next = NULL;
-					iter->dsts->name = ((dst_t *)x->data)->dst;
-					added += 1;
-				}
-				else if (count->count > 0 && count->count == iter->count)
-				{
-					max_t *new = malloc(sizeof(max_t));
-					new->name = ((dst_t *)x->data)->dst;
-					new->next = iter->dsts;
-					iter->dsts = new;
-				}
-
-				done = 1;
-			}
-
-			iter = iter->next;
-		}
-
-		count = count->next;
-	}
-
-	return added + megapoop(x->left);
-}
-
 void end()
 {
 	// free destinations
 	destinations_dispose(destinations);
-	/*dst_t *dst;
-	while (destinations != NULL)
-	{
-		dst = destinations;
-		destinations = dst->next;
-		_deldst(NULL, dst, &destinations);
-	}*/
 
 	// free types
 	type_t *type;
@@ -742,25 +396,8 @@ void end()
 	entities_dispose(entities);
 }
 
-/*dst_t *_getprevdst(char *name, dst_t *relation)
-{
-	dst_t *curr = relation;
-	dst_t *prev = NULL;
-	while (curr != NULL)
-	{
-		if (strcmp(name, (char *)curr->dst) == 0)
-		{
-			return prev;
-		}
-		else
-		{
-			prev = curr;
-			curr = curr->next;
-		}
-	}
-	return prev;
-}*/
 
+// private helper function
 src_t *_getprevsrc(char *src, type_t *rel, src_t *sources)
 {
 	src_t *curr = sources;
@@ -853,47 +490,17 @@ void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 	}
 }
 
-/*void _deldst(dst_t *prev, dst_t *curr, dst_t **relation)
-{
-	if (prev == NULL)
-	{
-		*relation = curr->next;
-	}
-	else
-	{
-		prev->next = curr->next;
-	}
-
-	src_t *s;
-	while (curr->sources != NULL)
-	{
-		s = curr->sources;
-		curr->sources = s->next;
-		free(s);
-	}
-
-	count_t *c;
-	while (curr->counts != NULL)
-	{
-		c = curr->counts;
-		curr->counts = c->next;
-		free(c);
-	}
-
-	free(curr);
-}*/
-void _delent(node_t *x, char *ent)
+void _finddeldst(node_t *x, char *ent, del_t **list)
 {
 	if (x == NIL)
 		return;
 
-	_delent(x->left, ent);
-	_delent(x->right, ent);
-	
-	//if (((dst_t *)x->data)->dst == ent)
-	if (strcmp(ent, ((dst_t *)x->data)->dst) == 0)
+	if (((dst_t *)x->data)->dst == ent)
 	{
-		//destinations_delete(&destinations, x);
+		del_t *del = malloc(sizeof(del_t));
+		del->node = x;
+		del->next = *list;
+		*list = del;
 	}
 	else
 	{
@@ -901,9 +508,15 @@ void _delent(node_t *x, char *ent)
 
 		if (((dst_t *)x->data)->sources == NULL)
 		{
-			//destinations_delete(&destinations, x);
+			del_t *del = malloc(sizeof(del_t));
+			del->node = x;
+			del->next = *list;
+			*list = del;
 		}
 	}
+
+	_finddeldst(x->left, ent, list);
+	_finddeldst(x->right, ent, list);
 }
 
 void _increment(dst_t *dst, type_t *type)
@@ -940,10 +553,67 @@ void _decrement(dst_t *dst, type_t *type)
 	}
 }
 
+int _buildreport(node_t *x)
+{
+	if (x == NIL)
+		return 0;
+	
+	int added = _buildreport(x->right);
+
+	count_t *count = ((dst_t *)x->data)->counts;
+	// iterate through destination counts
+	while (count != NULL)
+	{
+		type_t *iter = types;
+		char done = 0;
+		// iterate through types
+		while (done == 0)
+		{
+			if (iter == count->type)
+			{
+				// if current count is bigger
+				// delete all dsts and add the current dst
+				if (count->count > iter->count)
+				{
+					iter->count = count->count;
+
+					max_t *c;
+					while (iter->dsts != NULL)
+					{
+						c = iter->dsts;
+						iter->dsts = c->next;
+						free(c);
+					}
+
+					iter->dsts = malloc(sizeof(max_t));
+					iter->dsts->next = NULL;
+					iter->dsts->name = ((dst_t *)x->data)->dst;
+					added += 1;
+				}
+				// if current count is equal
+				// add the current dst
+				else if (count->count > 0 && count->count == iter->count)
+				{
+					max_t *new = malloc(sizeof(max_t));
+					new->name = ((dst_t *)x->data)->dst;
+					new->next = iter->dsts;
+					iter->dsts = new;
+				}
+
+				done = 1;
+			}
+
+			iter = iter->next;
+		}
+
+		count = count->next;
+	}
+
+	return added + _buildreport(x->left);
+}
 
 
-
-
+// generic tree operations
 void tree_left_rotate(node_t **root, node_t *x)
 {
 	node_t *y = x->right;
@@ -1128,7 +798,7 @@ node_t *tree_successor(node_t *x)
 }
 
 
-
+// entities tree operations
 node_t *entities_search(node_t *node, char *ent)
 {
 	node_t *curr = node;
@@ -1224,7 +894,7 @@ void entities_dispose(node_t *x)
 }
 
 
-
+// destinations tree operations
 node_t *destinations_search(node_t *node, char *ent)
 {
 	node_t *curr = node;
