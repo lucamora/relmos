@@ -27,10 +27,16 @@ typedef struct typ
 	struct typ *next;
 } type_t;
 
+typedef struct rel
+{
+	char *type;
+	struct rel *next;
+} rel_t;
+
 typedef struct el
 {
 	char *src;
-	type_t *type;
+	rel_t *types;
 	struct el *next;
 } src_t;
 
@@ -64,12 +70,12 @@ void end();
 
 
 // private helper function
-src_t *_getprevsrc(char *src, type_t *rel, src_t *sources);
+src_t *_getprevsrc(char *src, src_t *sources);
 type_t *_getreltype(char *name);
 void _delsrc(char *name, type_t *rel, dst_t *curr_dst);
 void _finddeldst(node_t *x, char *ent, del_t **list);
 void _increment(dst_t *dst, type_t *type);
-void _decrement(dst_t *dst, type_t *type);
+void _decrement(dst_t *dst, char *type);
 int _buildreport(node_t *x);
 
 
@@ -273,20 +279,39 @@ void addrel(char *src, char *dst, char *rel)
 	// create destination (if does not already exist)
 	dst_t *curr_dst = destinations_insert(&destinations, (char *)dst_ent->data);
 
-	// create source (if does not already exist)
-	src_t *prev_src = _getprevsrc((char *)src_ent->data, curr_type, curr_dst->sources);
+	// lookup source
+	src_t *prev_src = _getprevsrc((char *)src_ent->data, curr_dst->sources);
 	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
 
-	// relation already exists
-	if (curr_src != NULL)
-		return;
-
 	// create source
-	src_t *new_src = malloc(sizeof(src_t));
-	new_src->src = (char *)src_ent->data;
-	new_src->type = curr_type;
-	new_src->next = curr_dst->sources;
-	curr_dst->sources = new_src;
+	if (curr_src == NULL)
+	{
+		curr_src = malloc(sizeof(src_t));
+		curr_src->src = (char *)src_ent->data;
+		curr_src->types = NULL;
+		curr_src->next = curr_dst->sources;
+		curr_dst->sources = curr_src;
+	}
+
+	// lookup relation
+	rel_t *iter = curr_src->types;
+	while (iter != NULL)
+	{
+		// relation already exists
+		if (curr_type->name == iter->type)
+			return;
+		iter = iter->next;
+	}
+
+	// relation already exists
+	if (iter != NULL)
+		return;
+	
+	// create relation	
+	rel_t *new_rel = malloc(sizeof(rel_t));
+	new_rel->type = curr_type->name;
+	new_rel->next = curr_src->types;
+	curr_src->types = new_rel;
 	_increment(curr_dst, curr_type);
 }
 
@@ -398,13 +423,13 @@ void end()
 
 
 // private helper function
-src_t *_getprevsrc(char *src, type_t *rel, src_t *sources)
+src_t *_getprevsrc(char *src, src_t *sources)
 {
 	src_t *curr = sources;
 	src_t *prev = NULL;
 	while (curr != NULL)
 	{
-		if (src == curr->src && rel == curr->type)
+		if (src == curr->src)
 		{
 			return prev;
 		}
@@ -433,60 +458,80 @@ type_t *_getreltype(char *name)
 
 void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 {
-	src_t *curr = curr_dst->sources;
-	src_t *prev = NULL;
-	while (curr != NULL)
+	// if rel != NULL
+	// then delete only specific relation
+	// else delete all relations
+
+	// if src.types = NULL
+	// then delete src
+	src_t *curr_src = curr_dst->sources;
+	src_t *prev_src = NULL;
+	while (curr_src != NULL)
 	{
-		if (strcmp(name, curr->src) == 0)
+		if (strcmp(name, curr_src->src) == 0)
 		{
 			if (rel != NULL)
 			{
-				// remove only a relation
-				if (rel == curr->type)
+				// delete only a relation
+				rel_t *iter = curr_src->types;
+				rel_t *p = NULL;
+				while (iter != NULL)
 				{
-					// remove source
-					if (prev == NULL)
+					if (rel->name == iter->type)
 					{
-						curr_dst->sources = curr->next;
+						// remove relation
+						if (p == NULL)
+						{
+							curr_src->types = iter->next;
+						}
+						else
+						{
+							p->next = iter->next;
+						}
+
+						_decrement(curr_dst, iter->type);
+						free(iter);
+						iter = NULL; // exit loop
 					}
 					else
 					{
-						prev->next = curr->next;
+						p = iter;
+						iter = iter->next;	
 					}
-
-					_decrement(curr_dst, curr->type);
-					free(curr);
-					return;
-				}
-				else
-				{
-					prev = curr;
-					curr = curr->next;
 				}
 			}
 			else
 			{
-				// remove all relations
-				// remove source
-				if (prev == NULL)
+				// delete all relations
+				rel_t *r;
+				while (curr_src->types != NULL)
 				{
-					curr_dst->sources = curr->next;
+					_decrement(curr_dst, curr_src->types->type);
+					r = curr_src->types;
+					curr_src->types = r->next;
+					free(r);
+				}
+			}
+			
+			if (curr_src->types == NULL)
+			{
+				// remove source
+				if (prev_src == NULL)
+				{
+					curr_dst->sources = curr_src->next;
 				}
 				else
 				{
-					prev->next = curr->next;
+					prev_src->next = curr_src->next;
 				}
 
-				_decrement(curr_dst, curr->type);
-				free(curr);
-				curr = (prev != NULL) ? prev->next : curr_dst->sources;
+				free(curr_src);
+				return;
 			}
 		}
-		else
-		{
-			prev = curr;
-			curr = curr->next;
-		}
+
+		prev_src = curr_src;
+		curr_src = curr_src->next;
 	}
 }
 
@@ -539,12 +584,12 @@ void _increment(dst_t *dst, type_t *type)
 	dst->counts = curr;
 }
 
-void _decrement(dst_t *dst, type_t *type)
+void _decrement(dst_t *dst, char *type)
 {
 	count_t *curr = dst->counts;
 	while (curr != NULL)
 	{
-		if (type == curr->type)
+		if (type == curr->type->name)
 		{
 			curr->count--;
 			return;
@@ -1007,6 +1052,15 @@ void destinations_dispose(node_t *x)
 		while (((dst_t *)x->data)->sources != NULL)
 		{
 			s = ((dst_t *)x->data)->sources;
+
+			rel_t *r;
+			while (s->types != NULL)
+			{
+				r = s->types;
+				s->types = r->next;
+				free(r);
+			}
+
 			((dst_t *)x->data)->sources = s->next;
 			free(s);
 		}
