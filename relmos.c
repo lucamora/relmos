@@ -63,6 +63,7 @@ void end();
 
 
 // private helper function
+type_t *_addreltype(char *name);
 type_t *_getreltype(char *name);
 void _delsrc(char *name, type_t *rel, ent_t *curr_dst);
 void _delsources(node_t *root, char *ent);
@@ -200,50 +201,7 @@ void delent(char *entity)
 void addrel(char *src, char *dst, char *rel)
 {
 	// search if relation type already exists
-	type_t *curr_type = types;
-	type_t *ins_type = NULL;
-	char found_type = 0;
-	while (curr_type != NULL && found_type == 0)
-	{
-		int cmp = strcmp(rel, curr_type->name);
-		if (cmp == 0)
-		{
-			found_type = 1;
-		}
-		else
-		{
-			if (cmp > 0)
-			{
-				ins_type = curr_type;
-			}
-			curr_type = curr_type->next;
-		}
-	}
-
-	// create relation type
-	if (found_type == 0)
-	{
-		type_t *new_type = malloc(sizeof(type_t));
-		new_type->name = rel;
-		new_type->count = 0;
-		new_type->dsts = NULL;
-		if (ins_type == NULL)
-		{
-			new_type->next = types;
-			types = new_type;
-		}
-		else
-		{
-			new_type->next = ins_type->next;
-			ins_type->next = new_type;
-		}
-
-		curr_type = new_type;
-	}
-	else
-	{
-		free(rel);
-	}
+	type_t *curr_type = _addreltype(rel);
 
 	// lookup entities
 	node_t *src_ent = entities_search(destinations, src);
@@ -371,6 +329,47 @@ void end()
 
 
 // private helper function
+type_t *_addreltype(char *name)
+{
+	type_t *curr_type = types;
+	type_t *ins_type = NULL;
+	while (curr_type != NULL)
+	{
+		int cmp = strcmp(name, curr_type->name);
+		if (cmp == 0)
+		{
+			free(name);
+			return curr_type;
+		}
+		else
+		{
+			if (cmp > 0)
+			{
+				ins_type = curr_type;
+			}
+			curr_type = curr_type->next;
+		}
+	}
+
+	// create relation type
+	type_t *new_type = malloc(sizeof(type_t));
+	new_type->name = name;
+	new_type->count = 0;
+	new_type->dsts = NULL;
+	if (ins_type == NULL)
+	{
+		new_type->next = types;
+		types = new_type;
+	}
+	else
+	{
+		new_type->next = ins_type->next;
+		ins_type->next = new_type;
+	}
+
+	return new_type;
+}
+
 type_t *_getreltype(char *name)
 {
 	type_t *curr = types;
