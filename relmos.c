@@ -6,6 +6,8 @@
 #define RED 'r'
 #define BLACK 'b'
 
+#define SOURCES_SET_SIZE 200
+
 typedef struct node
 {
 	void *data;
@@ -50,7 +52,7 @@ typedef struct
 {
 	char *name;
 	count_t *counts;
-	node_t *sources;
+	node_t *sources[SOURCES_SET_SIZE];
 } ent_t;
 
 
@@ -88,6 +90,11 @@ node_t *sources_search(node_t *node, char *ent);
 src_t *sources_insert(node_t **root, char *ent);
 void sources_delete(node_t **root, node_t *z);
 void sources_dispose(node_t *x);
+
+node_t *set_search(node_t *set[], char *ent);
+src_t *set_insert(node_t *set[], char *ent);
+void set_delete(node_t *set[], node_t *node);
+void set_dispose(node_t *set[]);
 
 #define NIL (&nil)
 static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
@@ -257,7 +264,7 @@ void addrel(char *src, char *dst, char *rel)
 		return;
 
 	// create source (if does not already exist)
-	src_t *curr_src = sources_insert(&((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
+	src_t *curr_src = set_insert(((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
 
 	// lookup relation
 	rel_t *iter = curr_src->types;
@@ -390,7 +397,7 @@ void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 	// if rel != NULL
 	// then delete only specific relation
 	// else delete all relations
-	node_t *curr_src = sources_search(curr_dst->sources, name);
+	node_t *curr_src = set_search(curr_dst->sources, name);
 
 	if (curr_src == NULL)
 		return;
@@ -428,7 +435,7 @@ void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 		// delete source if it does not have any relation
 		if (((src_t *)curr_src->data)->types == NULL)
 		{
-			sources_delete(&curr_dst->sources, curr_src);
+			set_delete(curr_dst->sources, curr_src);
 			return;
 		}
 	}
@@ -445,7 +452,7 @@ void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 		}
 
 		// delete source
-		sources_delete(&curr_dst->sources, curr_src);
+		set_delete(curr_dst->sources, curr_src);
 	}
 }
 
@@ -838,7 +845,8 @@ void entities_insert(node_t **root, char *ent)
 	node_t *z = malloc(sizeof(node_t));
 	z->data = malloc(sizeof(ent_t));
 	((ent_t *)z->data)->counts = NULL;
-	((ent_t *)z->data)->sources = NIL;
+	for (int i = 0; i < SOURCES_SET_SIZE; i++)
+		((ent_t *)z->data)->sources[i] = NIL;
 	((ent_t *)z->data)->name = ent;
 	z->parent = y;
 	if (y == NIL)
@@ -855,7 +863,7 @@ void entities_insert(node_t **root, char *ent)
 
 void entities_delete(node_t **root, node_t *z)
 {
-	sources_dispose(((ent_t *)z->data)->sources);
+	set_dispose(((ent_t *)z->data)->sources);
 
 	count_t *c;
 	while (((ent_t *)z->data)->counts != NULL)
@@ -902,7 +910,7 @@ void entities_dispose(node_t *x)
 		entities_dispose(x->left);
 		entities_dispose(x->right);
 
-		sources_dispose(((ent_t *)x->data)->sources);
+		set_dispose(((ent_t *)x->data)->sources);
 
 		count_t *c;
 		while (((ent_t *)x->data)->counts != NULL)
@@ -1021,5 +1029,44 @@ void sources_dispose(node_t *x)
 
 		free((src_t *)x->data);
 		free(x);
+	}
+}
+
+unsigned long hash(char *val)
+{
+	// K&R version 2 hashing algorithm
+	unsigned long hash;
+
+    for (hash = 0; *val != '\0'; val++)
+        hash = *val + 31 * hash;
+    return hash;
+}
+
+
+// sources hashset operations
+node_t *set_search(node_t *set[], char *ent)
+{
+	unsigned long index = hash(ent) % SOURCES_SET_SIZE;
+	return sources_search(set[index], ent);
+}
+
+src_t *set_insert(node_t *set[], char *ent)
+{
+	unsigned long index = hash(ent) % SOURCES_SET_SIZE;
+	return sources_insert(&set[index], ent);
+}
+
+void set_delete(node_t *set[], node_t *node)
+{
+	char *ent = ((src_t *)node->data)->src;
+	unsigned long index = hash(ent) % SOURCES_SET_SIZE;
+	sources_delete(&set[index], node);
+}
+
+void set_dispose(node_t *set[])
+{
+	for (int i = 0; i < SOURCES_SET_SIZE; i++)
+	{
+		sources_dispose(set[i]);
 	}
 }
