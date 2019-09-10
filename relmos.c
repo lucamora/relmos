@@ -48,16 +48,10 @@ typedef struct cnt
 
 typedef struct
 {
-	char *dst;
+	char *name;
 	count_t *counts;
 	node_t *sources;
-} dst_t;
-
-typedef struct del
-{
-	node_t *node;
-	struct del *next;
-} del_t;
+} ent_t;
 
 
 void addent(char *entity);
@@ -70,10 +64,10 @@ void end();
 
 // private helper function
 type_t *_getreltype(char *name);
-void _delsrc(char *name, type_t *rel, dst_t *curr_dst);
-void _finddeldst(node_t *x, char *ent, del_t **list);
-void _increment(dst_t *dst, type_t *type);
-void _decrement(dst_t *dst, char *type);
+void _delsrc(char *name, type_t *rel, ent_t *curr_dst);
+void _delsources(node_t *x, char *ent);
+void _increment(ent_t *dst, type_t *type);
+void _decrement(ent_t *dst, char *type);
 int _buildreport(node_t *x);
 
 
@@ -86,14 +80,9 @@ node_t *tree_minimum(node_t *x);
 node_t *tree_successor(node_t *x);
 
 node_t *entities_search(node_t *node, char *ent);
-int entities_insert(node_t **root, char *ent);
+void entities_insert(node_t **root, char *ent);
 void entities_delete(node_t **root, node_t *z);
 void entities_dispose(node_t *x);
-
-node_t *destinations_search(node_t *node, char *ent);
-dst_t *destinations_insert(node_t **root, char *ent);
-void destinations_delete(node_t **root, node_t *z);
-void destinations_dispose(node_t *x);
 
 node_t *sources_search(node_t *node, char *ent);
 src_t *sources_insert(node_t **root, char *ent);
@@ -105,7 +94,6 @@ static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
 
 
 // main data structures
-node_t *entities = NIL;
 node_t *destinations = NIL;
 type_t *types = NULL;
 
@@ -188,13 +176,13 @@ int main(int argc, char const *argv[])
 
 void addent(char *entity)
 {
-	entities_insert(&entities, entity);
+	entities_insert(&destinations, entity);
 }
 
 void delent(char *entity)
 {
 	// lookup entity
-	node_t *curr_ent = entities_search(entities, entity);
+	node_t *curr_ent = entities_search(destinations, entity);
 
 	free(entity);
 
@@ -202,22 +190,11 @@ void delent(char *entity)
 	if (curr_ent == NULL)
 		return;
 
-	// get a list of destinations to delete
-	del_t *delete = NULL;
-	_finddeldst(destinations, (char *)curr_ent->data, &delete);
-
-	// delete destinations
-	del_t *i;
-	while (delete != NULL)
-	{
-		destinations_delete(&destinations, delete->node);
-		i = delete;
-		delete = i->next;
-		free(i);
-	}
+	// delete all occurrencies in other sources
+	_delsources(destinations, ((ent_t *)curr_ent->data)->name);
 
 	// delete entity
-	entities_delete(&entities, curr_ent);
+	entities_delete(&destinations, curr_ent);
 }
 
 void addrel(char *src, char *dst, char *rel)
@@ -269,8 +246,8 @@ void addrel(char *src, char *dst, char *rel)
 	}
 
 	// lookup entities
-	node_t *src_ent = entities_search(entities, src);
-	node_t *dst_ent = entities_search(entities, dst);
+	node_t *src_ent = entities_search(destinations, src);
+	node_t *dst_ent = entities_search(destinations, dst);
 
 	free(src);
 	free(dst);
@@ -279,11 +256,8 @@ void addrel(char *src, char *dst, char *rel)
 	if (src_ent == NULL || dst_ent == NULL)
 		return;
 
-	// create destination (if does not already exist)
-	dst_t *curr_dst = destinations_insert(&destinations, (char *)dst_ent->data);
-
 	// create source (if does not already exist)
-	src_t *curr_src = sources_insert(&curr_dst->sources, (char *)src_ent->data);
+	src_t *curr_src = sources_insert(&((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
 
 	// lookup relation
 	rel_t *iter = curr_src->types;
@@ -300,7 +274,7 @@ void addrel(char *src, char *dst, char *rel)
 	new_rel->type = curr_type->name;
 	new_rel->next = curr_src->types;
 	curr_src->types = new_rel;
-	_increment(curr_dst, curr_type);
+	_increment((ent_t *)dst_ent->data, curr_type);
 }
 
 void delrel(char *src, char *dst, char *rel)
@@ -310,8 +284,8 @@ void delrel(char *src, char *dst, char *rel)
 	free(rel);
 
 	// lookup entities
-	node_t *src_ent = entities_search(entities, src);
-	node_t *dst_ent = entities_search(entities, dst);
+	node_t *src_ent = entities_search(destinations, src);
+	node_t *dst_ent = entities_search(destinations, dst);
 
 	free(src);
 	free(dst);
@@ -319,21 +293,9 @@ void delrel(char *src, char *dst, char *rel)
 	// relation or an entity does not exist
 	if (relation == NULL || src_ent == NULL || dst_ent == NULL)
 		return;
-
-	node_t *curr_dst = destinations_search(destinations, (char *)dst_ent->data);
-
-	// destination does not exist
-	if (curr_dst == NULL)
-		return;
 	
 	// delete source
-	_delsrc((char *)src_ent->data, relation, (dst_t *)curr_dst->data);
-
-	// delete destination if does not have any source
-	if (((dst_t *)curr_dst)->sources == NULL)
-	{
-		destinations_delete(&destinations, curr_dst);
-	}
+	_delsrc(((ent_t *)src_ent->data)->name, relation, (ent_t *)dst_ent->data);
 }
 
 void report()
@@ -386,7 +348,7 @@ void report()
 void end()
 {
 	// free destinations
-	destinations_dispose(destinations);
+	entities_dispose(destinations);
 
 	// free types
 	type_t *type;
@@ -404,9 +366,6 @@ void end()
 		free(type->name);
 		free(type);
 	}
-
-	// free entities
-	entities_dispose(entities);
 }
 
 
@@ -425,7 +384,7 @@ type_t *_getreltype(char *name)
 	return NULL;
 }
 
-void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
+void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 {
 	// if rel != NULL
 	// then delete only specific relation
@@ -489,36 +448,19 @@ void _delsrc(char *name, type_t *rel, dst_t *curr_dst)
 	}
 }
 
-void _finddeldst(node_t *x, char *ent, del_t **list)
+void _delsources(node_t *x, char *ent)
 {
 	if (x == NIL)
 		return;
 
-	if (((dst_t *)x->data)->dst == ent)
-	{
-		del_t *del = malloc(sizeof(del_t));
-		del->node = x;
-		del->next = *list;
-		*list = del;
-	}
-	else
-	{
-		_delsrc(ent, NULL, (dst_t *)x->data);
+	if (((ent_t *)x->data)->name != ent)
+		_delsrc(ent, NULL, (ent_t *)x->data);
 
-		if (((dst_t *)x->data)->sources == NULL)
-		{
-			del_t *del = malloc(sizeof(del_t));
-			del->node = x;
-			del->next = *list;
-			*list = del;
-		}
-	}
-
-	_finddeldst(x->left, ent, list);
-	_finddeldst(x->right, ent, list);
+	_delsources(x->left, ent);
+	_delsources(x->right, ent);
 }
 
-void _increment(dst_t *dst, type_t *type)
+void _increment(ent_t *dst, type_t *type)
 {
 	count_t *curr = dst->counts;
 	while (curr != NULL)
@@ -538,7 +480,7 @@ void _increment(dst_t *dst, type_t *type)
 	dst->counts = curr;
 }
 
-void _decrement(dst_t *dst, char *type)
+void _decrement(ent_t *dst, char *type)
 {
 	count_t *curr = dst->counts;
 	while (curr != NULL)
@@ -559,7 +501,7 @@ int _buildreport(node_t *x)
 	
 	int added = _buildreport(x->right);
 
-	count_t *count = ((dst_t *)x->data)->counts;
+	count_t *count = ((ent_t *)x->data)->counts;
 	// iterate through destination counts
 	while (count != NULL)
 	{
@@ -586,7 +528,7 @@ int _buildreport(node_t *x)
 
 					iter->dsts = malloc(sizeof(max_t));
 					iter->dsts->next = NULL;
-					iter->dsts->name = ((dst_t *)x->data)->dst;
+					iter->dsts->name = ((ent_t *)x->data)->name;
 					added += 1;
 				}
 				// if current count is equal
@@ -594,7 +536,7 @@ int _buildreport(node_t *x)
 				else if (count->count > 0 && count->count == iter->count)
 				{
 					max_t *new = malloc(sizeof(max_t));
-					new->name = ((dst_t *)x->data)->dst;
+					new->name = ((ent_t *)x->data)->name;
 					new->next = iter->dsts;
 					iter->dsts = new;
 				}
@@ -797,13 +739,13 @@ node_t *tree_successor(node_t *x)
 }
 
 
-// entities tree operations
+// destinations tree operations
 node_t *entities_search(node_t *node, char *ent)
 {
 	node_t *curr = node;
 	while (curr != NIL)
 	{
-		int cmp = strcmp(ent, ((char *)curr->data));
+		int cmp = strcmp(ent, (((ent_t *)curr->data)->name));
 		if (cmp == 0)
 			return curr;
 		if (cmp < 0)
@@ -814,18 +756,18 @@ node_t *entities_search(node_t *node, char *ent)
 	return NULL;
 }
 
-int entities_insert(node_t **root, char *ent)
+void entities_insert(node_t **root, char *ent)
 {
 	node_t *y = NIL;
 	node_t *x = (*root);
 	while (x != NIL)
 	{
 		y = x;
-		int cmp = strcmp(ent, (char *)x->data);
+		int cmp = strcmp(ent, ((ent_t *)x->data)->name);
 		if (cmp == 0)
 		{
 			free(ent);
-			return 0;
+			return;
 		}
 		else if (cmp < 0)
 			x = x->left;
@@ -834,11 +776,14 @@ int entities_insert(node_t **root, char *ent)
 	}
 
 	node_t *z = malloc(sizeof(node_t));
-	z->data = ent;
+	z->data = malloc(sizeof(ent_t));
+	((ent_t *)z->data)->counts = NULL;
+	((ent_t *)z->data)->sources = NIL;
+	((ent_t *)z->data)->name = ent;
 	z->parent = y;
 	if (y == NIL)
 		(*root) = z;
-	else if (strcmp(ent, (char *)y->data) < 0)
+	else if (strcmp(ent, ((ent_t *)y->data)->name) < 0)
 		y->left = z;
 	else
 		y->right = z;
@@ -846,13 +791,22 @@ int entities_insert(node_t **root, char *ent)
 	z->right = NIL;
 	z->color = RED;
 	tree_insert_fixup(root, z);
-
-	return 1;
 }
 
 void entities_delete(node_t **root, node_t *z)
 {
-	free((char *)z->data);
+	sources_dispose(((ent_t *)z->data)->sources);
+
+	count_t *c;
+	while (((ent_t *)z->data)->counts != NULL)
+	{
+		c = ((ent_t *)z->data)->counts;
+		((ent_t *)z->data)->counts = c->next;
+		free(c);
+	}
+
+	free(((ent_t *)z->data)->name);
+	free((ent_t *)z->data);
 
 	node_t *y, *x;
 	if (z->left == NIL || z->right == NIL)
@@ -887,129 +841,23 @@ void entities_dispose(node_t *x)
 	{
 		entities_dispose(x->left);
 		entities_dispose(x->right);
-		free(x->data);
-		free(x);
-	}
-}
 
-
-// destinations tree operations
-node_t *destinations_search(node_t *node, char *ent)
-{
-	node_t *curr = node;
-	while (curr != NIL)
-	{
-		int cmp = strcmp(ent, (((dst_t *)curr->data)->dst));
-		if (cmp == 0)
-			return curr;
-		if (cmp < 0)
-			curr = curr->left;
-		else
-			curr = curr->right;
-	}
-	return NULL;
-}
-
-dst_t *destinations_insert(node_t **root, char *ent)
-{
-	node_t *y = NIL;
-	node_t *x = (*root);
-	while (x != NIL)
-	{
-		y = x;
-		int cmp = strcmp(ent, ((dst_t *)x->data)->dst);
-		if (cmp == 0)
-		{
-			return (dst_t *)x->data;
-		}
-		else if (cmp < 0)
-			x = x->left;
-		else
-			x = x->right;
-	}
-
-	node_t *z = malloc(sizeof(node_t));
-	z->data = malloc(sizeof(dst_t));
-	((dst_t *)z->data)->counts = NULL;
-	((dst_t *)z->data)->sources = NIL;
-	((dst_t *)z->data)->dst = ent;
-	z->parent = y;
-	if (y == NIL)
-		(*root) = z;
-	else if (strcmp(ent, ((dst_t *)y->data)->dst) < 0)
-		y->left = z;
-	else
-		y->right = z;
-	z->left = NIL;
-	z->right = NIL;
-	z->color = RED;
-	tree_insert_fixup(root, z);
-
-	return z->data;
-}
-
-void destinations_delete(node_t **root, node_t *z)
-{
-	sources_dispose(((dst_t *)z->data)->sources);
-
-	count_t *c;
-	while (((dst_t *)z->data)->counts != NULL)
-	{
-		c = ((dst_t *)z->data)->counts;
-		((dst_t *)z->data)->counts = c->next;
-		free(c);
-	}
-
-	free((dst_t *)z->data);
-
-	node_t *y, *x;
-	if (z->left == NIL || z->right == NIL)
-		y = z;
-	else
-	{
-		y = tree_successor(z);
-	}
-	if (y->left != NIL)
-		x = y->left;
-	else
-		x = y->right;
-	x->parent = y->parent;
-	if (y->parent == NIL)
-		(*root) = x;
-	else if (y == y->parent->left)
-		y->parent->left = x;
-	else
-		y->parent->right = x;
-	if (y != z)
-		z->data = y->data;
-
-	if (y->color == BLACK)
-		tree_delete_fixup(root, x);
-
-	free(y);
-}
-
-void destinations_dispose(node_t *x)
-{
-	if (x != NIL)
-	{
-		destinations_dispose(x->left);
-		destinations_dispose(x->right);
-
-		sources_dispose(((dst_t *)x->data)->sources);
+		sources_dispose(((ent_t *)x->data)->sources);
 
 		count_t *c;
-		while (((dst_t *)x->data)->counts != NULL)
+		while (((ent_t *)x->data)->counts != NULL)
 		{
-			c = ((dst_t *)x->data)->counts;
-			((dst_t *)x->data)->counts = c->next;
+			c = ((ent_t *)x->data)->counts;
+			((ent_t *)x->data)->counts = c->next;
 			free(c);
 		}
 
-		free((dst_t *)x->data);
+		free(((ent_t *)x->data)->name);
+		free((ent_t *)x->data);
 		free(x);
 	}
 }
+
 
 // sources tree operations
 node_t *sources_search(node_t *node, char *ent)
@@ -1067,7 +915,7 @@ src_t *sources_insert(node_t **root, char *ent)
 
 void sources_delete(node_t **root, node_t *z)
 {
-	free((dst_t *)z->data);
+	free((src_t *)z->data);
 
 	node_t *y, *x;
 	if (z->left == NIL || z->right == NIL)
