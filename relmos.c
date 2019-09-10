@@ -65,10 +65,10 @@ void end();
 // private helper function
 type_t *_getreltype(char *name);
 void _delsrc(char *name, type_t *rel, ent_t *curr_dst);
-void _delsources(node_t *x, char *ent);
+void _delsources(node_t *root, char *ent);
 void _increment(ent_t *dst, type_t *type);
 void _decrement(ent_t *dst, char *type);
-int _buildreport(node_t *x);
+char _buildreport(node_t *root);
 
 
 // tree operations
@@ -301,13 +301,14 @@ void delrel(char *src, char *dst, char *rel)
 void report()
 {
 	// number of items added to the report
-	int added = 0;
+	//int added = 0;
+	char empty = 1;
 	if (types != NULL)
 	{
-		added = _buildreport(destinations);
+		empty = _buildreport(destinations);
 	}
 
-	if (added > 0)
+	if (empty == 0)
 	{
 		char first = 1;
 		type_t *t = types;
@@ -448,16 +449,42 @@ void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 	}
 }
 
-void _delsources(node_t *x, char *ent)
+void _delsources(node_t *root, char *ent)
 {
-	if (x == NIL)
-		return;
+	char leftdone = 0;
+	char end = 0;
 
-	if (((ent_t *)x->data)->name != ent)
-		_delsrc(ent, NULL, (ent_t *)x->data);
+	while (root != NIL && end == 0)
+	{
+		if (leftdone == 0)
+		{
+			while (root->left != NIL)
+				root = root->left;
+		}
 
-	_delsources(x->left, ent);
-	_delsources(x->right, ent);
+		if (((ent_t *)root->data)->name != ent)
+			_delsrc(ent, NULL, (ent_t *)root->data);
+		
+		leftdone = 1;
+
+		if (root->right != NIL)
+		{
+			leftdone = 0;
+			root = root->right;
+		}
+		else if (root->parent != NIL)
+		{
+			while (root->parent != NIL && root == root->parent->right)
+				root = root->parent;
+			if (root->parent == NIL)
+				end = 1;
+			else
+				root = root->parent;
+		}
+		else
+			end = 1;
+		
+	}
 }
 
 void _increment(ent_t *dst, type_t *type)
@@ -494,63 +521,93 @@ void _decrement(ent_t *dst, char *type)
 	}
 }
 
-int _buildreport(node_t *x)
+char _buildreport(node_t *root)
 {
-	if (x == NIL)
-		return 0;
-	
-	int added = _buildreport(x->right);
+	char leftdone = 0;
+	char end = 0;
+	char empty = 1;
 
-	count_t *count = ((ent_t *)x->data)->counts;
-	// iterate through destination counts
-	while (count != NULL)
+	while (root != NIL && end == 0)
 	{
-		type_t *iter = types;
-		char done = 0;
-		// iterate through types
-		while (done == 0)
+		if (leftdone == 0)
 		{
-			if (iter == count->type)
-			{
-				// if current count is bigger
-				// delete all dsts and add the current dst
-				if (count->count > iter->count)
-				{
-					iter->count = count->count;
-
-					max_t *c;
-					while (iter->dsts != NULL)
-					{
-						c = iter->dsts;
-						iter->dsts = c->next;
-						free(c);
-					}
-
-					iter->dsts = malloc(sizeof(max_t));
-					iter->dsts->next = NULL;
-					iter->dsts->name = ((ent_t *)x->data)->name;
-					added += 1;
-				}
-				// if current count is equal
-				// add the current dst
-				else if (count->count > 0 && count->count == iter->count)
-				{
-					max_t *new = malloc(sizeof(max_t));
-					new->name = ((ent_t *)x->data)->name;
-					new->next = iter->dsts;
-					iter->dsts = new;
-				}
-
-				done = 1;
-			}
-
-			iter = iter->next;
+			while (root->left != NIL)
+				root = root->left;
 		}
 
-		count = count->next;
+		// start build report
+		count_t *count = ((ent_t *)root->data)->counts;
+		// iterate through destination counts
+		while (count != NULL)
+		{
+			type_t *iter = types;
+			char done = 0;
+			// iterate through types
+			while (done == 0)
+			{
+				if (iter == count->type)
+				{
+					// if current count is bigger
+					// delete all dsts and add the current dst
+					if (count->count > iter->count)
+					{
+						iter->count = count->count;
+
+						max_t *c;
+						while (iter->dsts != NULL)
+						{
+							c = iter->dsts;
+							iter->dsts = c->next;
+							free(c);
+						}
+
+						iter->dsts = malloc(sizeof(max_t));
+						iter->dsts->next = NULL;
+						iter->dsts->name = ((ent_t *)root->data)->name;
+						empty = 0;
+					}
+					// if current count is equal
+					// add the current dst
+					else if (count->count > 0 && count->count == iter->count)
+					{
+						max_t *new = malloc(sizeof(max_t));
+						new->name = ((ent_t *)root->data)->name;
+						new->next = iter->dsts;
+						iter->dsts = new;
+					}
+
+					done = 1;
+				}
+
+				iter = iter->next;
+			}
+
+			count = count->next;
+		}
+		// end build report
+		
+		leftdone = 1;
+
+		if (root->right != NIL)
+		{
+			leftdone = 0;
+			root = root->right;
+		}
+		else if (root->parent != NIL)
+		{
+			while (root->parent != NIL && root == root->parent->right)
+				root = root->parent;
+			if (root->parent == NIL)
+				end = 1;
+			else
+				root = root->parent;
+		}
+		else
+			end = 1;
+		
 	}
 
-	return added + _buildreport(x->left);
+	return empty;
 }
 
 
@@ -595,9 +652,7 @@ void tree_right_rotate(node_t **root, node_t *x)
 
 void tree_insert_fixup(node_t **root, node_t *z)
 {
-	if (z == *root)
-		(*root)->color = BLACK;
-	else
+	while (z != (*root) && z->parent->color == RED)
 	{
 		node_t *x = z->parent;
 		if (x->color == RED)
@@ -610,7 +665,7 @@ void tree_insert_fixup(node_t **root, node_t *z)
 					x->color = BLACK;
 					y->color = BLACK;
 					x->parent->color = RED;
-					tree_insert_fixup(root, x->parent);
+					z = x->parent;
 				}
 				else
 				{
@@ -633,7 +688,7 @@ void tree_insert_fixup(node_t **root, node_t *z)
 					x->color = BLACK;
 					y->color = BLACK;
 					x->parent->color = RED;
-					tree_insert_fixup(root, x->parent);
+					z = x->parent;
 				}
 				else
 				{
@@ -650,72 +705,77 @@ void tree_insert_fixup(node_t **root, node_t *z)
 			}
 		}
 	}
+	(*root)->color = BLACK;
 }
 
 void tree_delete_fixup(node_t **root, node_t *x)
 {
-	if (x->color == RED || x->parent == NIL)
-		x->color = BLACK;
-	else if (x == x->parent->left)
+	while (x != (*root) && x->color == BLACK)
 	{
-		node_t *w = x->parent->right;
-		if (w->color == RED)
+		if (x == x->parent->left)
 		{
-			w->color = BLACK;
-			x->parent->color = RED;
-			tree_left_rotate(root, x->parent);
-			w = x->parent->right;
-		}
-		if (w->left->color == BLACK && w->right->color == BLACK)
-		{
-			w->color = RED;
-			tree_delete_fixup(root, x->parent);
-		}
-		else
-		{
-			if (w->right->color == BLACK)
+			node_t *w = x->parent->right;
+			if (w->color == RED)
 			{
-				w->left->color = BLACK;
-				w->color = RED;
-				tree_right_rotate(root, w);
+				w->color = BLACK;
+				x->parent->color = RED;
+				tree_left_rotate(root, x->parent);
 				w = x->parent->right;
 			}
-			w->color = x->parent->color;
-			x->parent->color = BLACK;
-			w->right->color = BLACK;
-			tree_left_rotate(root, x->parent);
-		}
-	}
-	else
-	{
-		node_t *w = x->parent->left;
-		if (w->color == RED)
-		{
-			w->color = BLACK;
-			x->parent->color = RED;
-			tree_right_rotate(root, x->parent);
-			w = x->parent->left;
-		}
-		if (w->right->color == BLACK && w->left->color == BLACK)
-		{
-			w->color = RED;
-			tree_delete_fixup(root, x->parent);
+			if (w->left->color == BLACK && w->right->color == BLACK)
+			{
+				w->color = RED;
+				x = x->parent;
+			}
+			else
+			{
+				if (w->right->color == BLACK)
+				{
+					w->left->color = BLACK;
+					w->color = RED;
+					tree_right_rotate(root, w);
+					w = x->parent->right;
+				}
+				w->color = x->parent->color;
+				x->parent->color = BLACK;
+				w->right->color = BLACK;
+				tree_left_rotate(root, x->parent);
+				x = (*root); // exit loop
+			}
 		}
 		else
 		{
-			if (w->left->color == BLACK)
+			node_t *w = x->parent->left;
+			if (w->color == RED)
 			{
-				w->right->color = BLACK;
-				w->color = RED;
-				tree_left_rotate(root, w);
+				w->color = BLACK;
+				x->parent->color = RED;
+				tree_right_rotate(root, x->parent);
 				w = x->parent->left;
 			}
-			w->color = x->parent->color;
-			x->parent->color = BLACK;
-			w->left->color = BLACK;
-			tree_right_rotate(root, x->parent);
+			if (w->right->color == BLACK && w->left->color == BLACK)
+			{
+				w->color = RED;
+				x = x->parent;
+			}
+			else
+			{
+				if (w->left->color == BLACK)
+				{
+					w->right->color = BLACK;
+					w->color = RED;
+					tree_left_rotate(root, w);
+					w = x->parent->left;
+				}
+				w->color = x->parent->color;
+				x->parent->color = BLACK;
+				w->left->color = BLACK;
+				tree_right_rotate(root, x->parent);
+				x = (*root); // exit loop
+			}
 		}
 	}
+	x->color = BLACK;
 }
 
 node_t *tree_minimum(node_t *x)
@@ -745,7 +805,7 @@ node_t *entities_search(node_t *node, char *ent)
 	node_t *curr = node;
 	while (curr != NIL)
 	{
-		int cmp = strcmp(ent, (((ent_t *)curr->data)->name));
+		int cmp = strcmp((((ent_t *)curr->data)->name), ent);
 		if (cmp == 0)
 			return curr;
 		if (cmp < 0)
@@ -763,7 +823,7 @@ void entities_insert(node_t **root, char *ent)
 	while (x != NIL)
 	{
 		y = x;
-		int cmp = strcmp(ent, ((ent_t *)x->data)->name);
+		int cmp = strcmp(((ent_t *)x->data)->name, ent);
 		if (cmp == 0)
 		{
 			free(ent);
@@ -783,7 +843,7 @@ void entities_insert(node_t **root, char *ent)
 	z->parent = y;
 	if (y == NIL)
 		(*root) = z;
-	else if (strcmp(ent, ((ent_t *)y->data)->name) < 0)
+	else if (strcmp(((ent_t *)y->data)->name, ent) < 0)
 		y->left = z;
 	else
 		y->right = z;
