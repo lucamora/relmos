@@ -238,7 +238,7 @@ void addrel(char *src, char *dst, char *rel)
 {
 	// search if relation type already exists
 	//type_t *curr_type = _addreltype(rel);
-	//int curr_type = _addreltype(rel);
+	int curr_type = _addreltype(rel);
 
 	//printf("%s: %d\n\n", rel, curr_type);
 
@@ -252,8 +252,6 @@ void addrel(char *src, char *dst, char *rel)
 	// an entity does not exist
 	if (src_ent == NULL || dst_ent == NULL)
 		return;
-
-	int curr_type = _addreltype(rel);
 
 	// create source (if does not already exist)
 	src_t *curr_src = set_insert(((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
@@ -365,7 +363,7 @@ void report()
 				printf("%s ", type->name);
 
 				// sort dsts TODO: merge sort
-				/*for (int j = 1; j < type->dstscount; j++)
+				for (int j = 1; j < type->dstscount; j++)
 				{
 					char *tmp = type->dsts[j];
 					int i = j - 1;
@@ -375,9 +373,9 @@ void report()
 						i = i - 1;
 					}
 					type->dsts[i + 1] = tmp;
-				}*/
+				}
 				// sort dsts
-				build_max_heap(type);
+				/*build_max_heap(type);
 				for (int i = type->dstscount - 1; i >= 0; i--)
 				{
 					char *tmp = type->dsts[0];
@@ -385,7 +383,7 @@ void report()
 					type->dsts[i] = tmp;
 					//type->heapsize = type->heapsize - 1;
 					max_heapify(type, i, 0);
-				}
+				}*/
 
 				/*max_t *m = t->dsts;
 				while (t->dsts != NULL)
@@ -396,8 +394,8 @@ void report()
 					t->dsts = m->next;
 					free(m);
 				}*/
-				for (int m = type->dstscount - 1; m >= 0; m--)
-				//for (int m = 0; m < type->dstscount; m++)
+				//for (int m = type->dstscount - 1; m >= 0; m--)
+				for (int m = 0; m < type->dstscount; m++)
 				{
 					printf("%s ", type->dsts[m]);
 				}
@@ -625,9 +623,13 @@ void _delsrc(char *name, int rel, ent_t *curr_dst)
 				iter = iter->next;	
 			}
 		}*/
-		((src_t *)curr_src->data)->types[rel] = 0;
-		((src_t *)curr_src->data)->typescount = ((src_t *)curr_src->data)->typescount - 1;
-		_decrement(curr_dst, rel);
+
+		if (((src_t *)curr_src->data)->types[rel] == 1)
+		{
+			((src_t *)curr_src->data)->types[rel] = 0;
+			((src_t *)curr_src->data)->typescount = ((src_t *)curr_src->data)->typescount - 1;
+			_decrement(curr_dst, rel);
+		}
 
 		// delete source if it does not have any relation
 		//if (((src_t *)curr_src->data)->types == NULL)
