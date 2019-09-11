@@ -56,11 +56,6 @@ void _increment(ent_t *dst, int type);
 void _decrement(ent_t *dst, int type);
 char _buildreport(node_t *root);
 
-// sorting algorithm
-void mergesort(char *array[], int l, int r);
-void merge(char *array[], int l, int m, int r);
-static char inf[1] = { 123 }; // 'z' + 1
-
 
 // tree operations
 void tree_left_rotate(node_t **root, node_t *x);
@@ -91,9 +86,15 @@ struct {
 	int count;
 } types;
 
+struct {
+	type_t *list[TYPES_SIZE];
+	int lastcount;
+} ordered;
+
 int main(int argc, char const *argv[])
 {
 	types.count = 0;
+	ordered.lastcount = 0;
 
 	char cmd[7];
 	size_t len = 0;
@@ -270,37 +271,39 @@ void report()
 	{
 		char first = 1;
 
-		// sort types (insertion sort)
-		type_t *tmp[TYPES_SIZE];
-		for (int i = 0; i < types.count; i++)
-			tmp[i] = types.list[i];
-			
-		for (int j = 1; j < types.count; j++)
+		// compare with last ordered and reorder only if necessary
+		if (types.count != ordered.lastcount)
 		{
-			type_t *t = tmp[j];
-			int i = j - 1;
-			while (i >= 0 && (strcmp(tmp[i]->name, t->name) > 0))
+			ordered.lastcount = types.count;
+
+			for (int i = 0; i < types.count; i++)
+				ordered.list[i] = types.list[i];
+
+			// sort types (insertion sort)
+			for (int j = 1; j < types.count; j++)
 			{
-				tmp[i + 1] = tmp[i];
-				i = i - 1;
+				type_t *t = ordered.list[j];
+				int i = j - 1;
+				while (i >= 0 && (strcmp(ordered.list[i]->name, t->name) > 0))
+				{
+					ordered.list[i + 1] = ordered.list[i];
+					i = i - 1;
+				}
+				ordered.list[i + 1] = t;
 			}
-			tmp[i + 1] = t;
 		}
 		
 		for (int t = 0; t < types.count; t++)
 		{
-			if (tmp[t]->count > 0)
+			if (ordered.list[t]->count > 0)
 			{
-				type_t *type = tmp[t];
+				type_t *type = ordered.list[t];
 				if (first == 0)
 					printf(" ");
 				first = 0;
 				printf("%s ", type->name);
 
-				// sort dsts (merge sort)
-				mergesort(type->dsts, 0, type->dstscount - 1);
-
-				for (int m = 0; m < type->dstscount; m++)
+				for (int m = type->dstscount - 1; m >= 0; m--)
 				{
 					printf("%s ", type->dsts[m]);
 				}
@@ -517,54 +520,6 @@ char _buildreport(node_t *root)
 	}
 
 	return empty;
-}
-
-
-// sorting algorithm
-void mergesort(char *array[], int l, int r)
-{
-	if (l < r)
-	{
-		int m = (l + r) / 2;
-		mergesort(array, l, m);
-		mergesort(array, m + 1, r);
-		merge(array, l, m, r);
-	}
-}
-
-void merge(char *array[], int l, int m, int r)
-{
-	int n1 = m - l + 1;
-	int n2 = r - m;
-
-	char *L[n1 + 1], *R[n2 + 1];
-	
-	int i;
-	for (i = 0; i < n1; i++)
-		L[i] = array[l + i];
-	L[n1] = inf; // 'z' + 1
-
-	int j;
-	for (j = 0; j < n2; j++)
-		R[j] = array[m + j + 1];
-	R[n2] = inf; // 'z' + 1
-
-	i = 0;
-	j = 0;
-
-	for (int k = l; k < r + 1; k++)
-	{
-		if (strcmp(L[i], R[j]) <= 0)
-		{
-			array[k] = L[i];
-			i++;
-		}
-		else
-		{
-			array[k] = R[j];
-			j++;
-		}
-	}
 }
 
 
