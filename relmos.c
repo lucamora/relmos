@@ -60,9 +60,10 @@ void _decrement(ent_t *dst, int type);
 char _buildreport(node_t *root);
 unsigned long hash(char *val);
 
-
-void build_max_heap(type_t *type);
-void max_heapify(type_t *type, int n, int index);
+// sorting algorithm
+void mergesort(char *array[], int l, int r);
+void merge(char *array[], int l, int m, int r);
+static char inf[1] = { 123 }; // 'z' + 1
 
 
 // tree operations
@@ -277,7 +278,7 @@ void report()
 	{
 		char first = 1;
 
-		// sort types
+		// sort types (insertion sort)
 		type_t *tmp[TYPES_SIZE];
 		for (int i = 0; i < types.count; i++)
 			tmp[i] = types.list[i];
@@ -304,30 +305,9 @@ void report()
 				first = 0;
 				printf("%s ", type->name);
 
-				// sort dsts TODO: merge sort
-				for (int j = 1; j < type->dstscount; j++)
-				{
-					char *tmp = type->dsts[j];
-					int i = j - 1;
-					while (i >= 0 && (strcmp(type->dsts[i], tmp) > 0))
-					{
-						type->dsts[i + 1] = type->dsts[i];
-						i = i - 1;
-					}
-					type->dsts[i + 1] = tmp;
-				}
-				// sort dsts
-				/*build_max_heap(type);
-				for (int i = type->dstscount - 1; i >= 0; i--)
-				{
-					char *tmp = type->dsts[0];
-					type->dsts[0] = type->dsts[i];
-					type->dsts[i] = tmp;
-					//type->heapsize = type->heapsize - 1;
-					max_heapify(type, i, 0);
-				}*/
+				// sort dsts (merge sort)
+				mergesort(type->dsts, 0, type->dstscount - 1);
 
-				//for (int m = type->dstscount - 1; m >= 0; m--)
 				for (int m = 0; m < type->dstscount; m++)
 				{
 					printf("%s ", type->dsts[m]);
@@ -362,32 +342,6 @@ void end()
 	}
 }
 
-void build_max_heap(type_t *type)
-{
-	//type->heapsize = type->dstscount;
-	for (int i = (type->dstscount / 2) - 1; i >= 0; i--)
-		max_heapify(type, type->dstscount, i);
-}
-
-void max_heapify(type_t *type, int n, int index)
-{
-	int l = 2 * index + 1;
-	int r = 2 * index + 2;
-	int max;
-	if (l <= n && strcmp(type->dsts[l], type->dsts[index]) > 0)
-		max = l;
-	else
-		max = index;
-	if (r <= n && strcmp(type->dsts[r], type->dsts[index]) > 0)
-		max = r;
-	if (max != index)
-	{
-		char *tmp = type->dsts[index];
-		type->dsts[index] = type->dsts[max];
-		type->dsts[max] = tmp;
-		max_heapify(type, n, max);
-	}
-}
 
 // private helper function
 int _addreltype(char *name)
@@ -581,6 +535,54 @@ unsigned long hash(char *val)
     for (hash = 0; *val != '\0'; val++)
         hash = *val + 31 * hash;
     return hash;
+}
+
+
+// sorting algorithm
+void mergesort(char *array[], int l, int r)
+{
+	if (l < r)
+	{
+		int m = (l + r) / 2;
+		mergesort(array, l, m);
+		mergesort(array, m + 1, r);
+		merge(array, l, m, r);
+	}
+}
+
+void merge(char *array[], int l, int m, int r)
+{
+	int n1 = m - l + 1;
+	int n2 = r - m;
+
+	char *L[n1 + 1], *R[n2 + 1];
+	
+	int i;
+	for (i = 0; i < n1; i++)
+		L[i] = array[l + i];
+	L[n1] = inf; // 'z' + 1
+
+	int j;
+	for (j = 0; j < n2; j++)
+		R[j] = array[m + j + 1];
+	R[n2] = inf; // 'z' + 1
+
+	i = 0;
+	j = 0;
+
+	for (int k = l; k < r + 1; k++)
+	{
+		if (strcmp(L[i], R[j]) <= 0)
+		{
+			array[k] = L[i];
+			i++;
+		}
+		else
+		{
+			array[k] = R[j];
+			j++;
+		}
+	}
 }
 
 
@@ -986,7 +988,7 @@ void sources_dispose(node_t *x)
 	{
 		sources_dispose(x->left);
 		sources_dispose(x->right);
-		
+
 		free((src_t *)x->data);
 		free(x);
 	}
