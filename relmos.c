@@ -6,10 +6,8 @@
 #define RED 'r'
 #define BLACK 'b'
 
-#define ENTITIES_SET_SIZE 100
-#define SOURCES_SET_SIZE 50
 #define TYPE_DSTS_SIZE 600
-#define TYPES_SIZE 10
+#define TYPES_SIZE 5
 
 typedef struct node
 {
@@ -24,7 +22,6 @@ typedef struct typ
 	int count;
 	char *dsts[TYPE_DSTS_SIZE];
 	int dstscount;
-	int heapsize;
 } type_t;
 
 typedef struct el
@@ -38,7 +35,7 @@ typedef struct
 {
 	char *name;
 	int counts[TYPES_SIZE];
-	node_t *sources[SOURCES_SET_SIZE];
+	node_t *sources;
 } ent_t;
 
 
@@ -58,7 +55,6 @@ void _delsources(node_t *root, char *ent);
 void _increment(ent_t *dst, int type);
 void _decrement(ent_t *dst, int type);
 char _buildreport(node_t *root);
-unsigned long hash(char *val);
 
 // sorting algorithm
 void mergesort(char *array[], int l, int r);
@@ -74,28 +70,22 @@ void tree_delete_fixup(node_t **root, node_t *x);
 node_t *tree_minimum(node_t *x);
 node_t *tree_successor(node_t *x);
 
-node_t *entities_search(node_t *set[], char *ent);
-void entities_insert(node_t *set[], char *ent);
-void entities_delete(node_t *set[], node_t *z);
-void entities_dispose(node_t *set[]);
-void entities_cell_dispose(node_t *x);
+#define NIL (&nil)
+static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
+
+node_t *entities_search(node_t *root, char *ent);
+void entities_insert(node_t **root, char *ent);
+void entities_delete(node_t **root, node_t *z);
+void entities_dispose(node_t *root);
 
 node_t *sources_search(node_t *node, char *ent);
 src_t *sources_insert(node_t **root, char *ent);
 void sources_delete(node_t **root, node_t *z);
 void sources_dispose(node_t *x);
 
-node_t *set_search(node_t *set[], char *ent);
-src_t *set_insert(node_t *set[], char *ent);
-void set_delete(node_t *set[], node_t *node);
-void set_dispose(node_t *set[]);
-
-#define NIL (&nil)
-static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
-
 
 // main data structures
-node_t *destinations[ENTITIES_SET_SIZE];
+node_t *entities = NIL;
 struct {
 	type_t *list[TYPES_SIZE];
 	int count;
@@ -104,8 +94,6 @@ struct {
 int main(int argc, char const *argv[])
 {
 	types.count = 0;
-	for (int i = 0; i < ENTITIES_SET_SIZE; i++)
-		destinations[i] = NIL;
 
 	char cmd[7];
 	size_t len = 0;
@@ -183,14 +171,13 @@ int main(int argc, char const *argv[])
 
 void addent(char *entity)
 {
-	entities_insert(destinations, entity);
+	entities_insert(&entities, entity);
 }
 
 void delent(char *entity)
 {
 	// lookup entity
-	node_t *curr_ent = entities_search(destinations, entity);
-
+	node_t *curr_ent = entities_search(entities, entity);
 	free(entity);
 
 	// entity does not exist
@@ -198,34 +185,37 @@ void delent(char *entity)
 		return;
 
 	// delete all occurrencies in other sources
-	for (int i = 0; i < ENTITIES_SET_SIZE; i++)
-	{
-		if (destinations[i] != NIL)
-			_delsources(destinations[i], ((ent_t *)curr_ent->data)->name);
-	}
+	_delsources(entities, ((ent_t *)curr_ent->data)->name);
 
 	// delete entity
-	entities_delete(destinations, curr_ent);
+	entities_delete(&entities, curr_ent);
 }
 
 void addrel(char *src, char *dst, char *rel)
 {
+	// lookup entities
+	node_t *src_ent = entities_search(entities, src);
+	free(src);
+	if (src_ent == NULL)
+	{
+		free(dst);
+		free(rel);
+		return;
+	}
+	
+	node_t *dst_ent = entities_search(entities, dst);
+	free(dst);
+	if (dst_ent == NULL)
+	{
+		free(rel);
+		return;
+	}
+
 	// search if relation type already exists
 	int curr_type = _addreltype(rel);
 
-	// lookup entities
-	node_t *src_ent = entities_search(destinations, src);
-	node_t *dst_ent = entities_search(destinations, dst);
-
-	free(src);
-	free(dst);
-
-	// an entity does not exist
-	if (src_ent == NULL || dst_ent == NULL)
-		return;
-
 	// create source (if does not already exist)
-	src_t *curr_src = set_insert(((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
+	src_t *curr_src = sources_insert(&((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
 
 	// lookup relation
 	if (curr_src->types[curr_type] > 0)
@@ -242,16 +232,25 @@ void delrel(char *src, char *dst, char *rel)
 	// lookup relation type
 	int relation = _getreltype(rel);
 	free(rel);
+	if (relation < 0)
+	{
+		free(src);
+		free(dst);
+		return;
+	}
 
 	// lookup entities
-	node_t *src_ent = entities_search(destinations, src);
-	node_t *dst_ent = entities_search(destinations, dst);
-
+	node_t *src_ent = entities_search(entities, src);
 	free(src);
-	free(dst);
+	if (src_ent == NULL)
+	{
+		free(dst);
+		return;
+	}
 
-	// relation or an entity does not exist
-	if (relation < 0 || src_ent == NULL || dst_ent == NULL)
+	node_t *dst_ent = entities_search(entities, dst);
+	free(dst);
+	if (dst_ent == NULL)
 		return;
 	
 	// delete source
@@ -264,14 +263,7 @@ void report()
 	char empty = 1;
 	if (types.count > 0)
 	{
-		for (int i = 0; i < ENTITIES_SET_SIZE; i++)
-		{
-			if (destinations[i] != NIL)
-			{
-				if (_buildreport(destinations[i]) == 0)
-					empty = 0;
-			}
-		}
+		empty = _buildreport(entities);
 	}
 
 	if (empty == 0)
@@ -331,8 +323,8 @@ void report()
 
 void end()
 {
-	// free destinations
-	entities_dispose(destinations);
+	// free entities
+	entities_dispose(entities);
 
 	// free types
 	for (int t = 0; t < types.count; t++)
@@ -382,7 +374,7 @@ void _delsrc(char *name, int rel, ent_t *curr_dst)
 	// if rel > -1
 	// then delete only specific relation
 	// else delete all relations
-	node_t *curr_src = set_search(curr_dst->sources, name);
+	node_t *curr_src = sources_search(curr_dst->sources, name);
 
 	if (curr_src == NULL)
 		return;
@@ -399,7 +391,7 @@ void _delsrc(char *name, int rel, ent_t *curr_dst)
 		// delete source if it does not have any relation
 		if (((src_t *)curr_src->data)->typescount == 0)
 		{
-			set_delete(curr_dst->sources, curr_src);
+			sources_delete(&curr_dst->sources, curr_src);
 			return;
 		}
 	}
@@ -413,7 +405,7 @@ void _delsrc(char *name, int rel, ent_t *curr_dst)
 		}
 
 		// delete source
-		set_delete(curr_dst->sources, curr_src);
+		sources_delete(&curr_dst->sources, curr_src);
 	}
 }
 
@@ -525,16 +517,6 @@ char _buildreport(node_t *root)
 	}
 
 	return empty;
-}
-
-unsigned long hash(char *val)
-{
-	// K&R version 2 hashing algorithm
-	unsigned long hash;
-
-    for (hash = 0; *val != '\0'; val++)
-        hash = *val + 31 * hash;
-    return hash;
 }
 
 
@@ -775,11 +757,9 @@ node_t *tree_successor(node_t *x)
 
 
 // destinations tree operations
-node_t *entities_search(node_t *set[], char *ent)
+node_t *entities_search(node_t *root, char *ent)
 {
-	unsigned long index = hash(ent) % ENTITIES_SET_SIZE;
-
-	node_t *curr = set[index];
+	node_t *curr = root;
 	while (curr != NIL)
 	{
 		int cmp = strcmp((((ent_t *)curr->data)->name), ent);
@@ -793,12 +773,10 @@ node_t *entities_search(node_t *set[], char *ent)
 	return NULL;
 }
 
-void entities_insert(node_t *set[], char *ent)
+void entities_insert(node_t **root, char *ent)
 {
-	unsigned long index = hash(ent) % ENTITIES_SET_SIZE;
-
 	node_t *y = NIL;
-	node_t *x = set[index];
+	node_t *x = (*root);
 	while (x != NIL)
 	{
 		y = x;
@@ -818,12 +796,11 @@ void entities_insert(node_t *set[], char *ent)
 	z->data = malloc(sizeof(ent_t));
 	for (int i = 0; i < TYPES_SIZE; i++)
 		((ent_t *)z->data)->counts[i] = 0;
-	for (int i = 0; i < SOURCES_SET_SIZE; i++)
-		((ent_t *)z->data)->sources[i] = NIL;
+	((ent_t *)z->data)->sources = NIL;
 	((ent_t *)z->data)->name = ent;
 	z->parent = y;
 	if (y == NIL)
-		set[index] = z;
+		(*root) = z;
 	else if (strcmp(((ent_t *)y->data)->name, ent) < 0)
 		y->left = z;
 	else
@@ -831,15 +808,12 @@ void entities_insert(node_t *set[], char *ent)
 	z->left = NIL;
 	z->right = NIL;
 	z->color = RED;
-	tree_insert_fixup(&set[index], z);
+	tree_insert_fixup(root, z);
 }
 
-void entities_delete(node_t *set[], node_t *z)
+void entities_delete(node_t **root, node_t *z)
 {
-	char *ent = ((ent_t *)z->data)->name;
-	unsigned long index = hash(ent) % ENTITIES_SET_SIZE;
-
-	set_dispose(((ent_t *)z->data)->sources);
+	sources_dispose(((ent_t *)z->data)->sources);
 
 	free(((ent_t *)z->data)->name);
 	free((ent_t *)z->data);
@@ -857,7 +831,7 @@ void entities_delete(node_t *set[], node_t *z)
 		x = y->right;
 	x->parent = y->parent;
 	if (y->parent == NIL)
-		set[index] = x;
+		(*root) = x;
 	else if (y == y->parent->left)
 		y->parent->left = x;
 	else
@@ -866,28 +840,20 @@ void entities_delete(node_t *set[], node_t *z)
 		z->data = y->data;
 
 	if (y->color == BLACK)
-		tree_delete_fixup(&set[index], x);
+		tree_delete_fixup(root, x);
 
 	free(y);
 }
 
-void entities_dispose(node_t *set[])
-{
-	for (int i = 0; i < ENTITIES_SET_SIZE; i++)
-	{
-		entities_cell_dispose(set[i]);
-	}
-}
-
-void entities_cell_dispose(node_t *x)
+void entities_dispose(node_t *x)
 {
 	if (x == NIL)
 		return;
 
-	entities_cell_dispose(x->left);
-	entities_cell_dispose(x->right);
+	entities_dispose(x->left);
+	entities_dispose(x->right);
 
-	set_dispose(((ent_t *)x->data)->sources);
+	sources_dispose(((ent_t *)x->data)->sources);
 
 	free(((ent_t *)x->data)->name);
 	free((ent_t *)x->data);
@@ -991,34 +957,5 @@ void sources_dispose(node_t *x)
 
 		free((src_t *)x->data);
 		free(x);
-	}
-}
-
-
-// sources hashset operations
-node_t *set_search(node_t *set[], char *ent)
-{
-	unsigned long index = hash(ent) % SOURCES_SET_SIZE;
-	return sources_search(set[index], ent);
-}
-
-src_t *set_insert(node_t *set[], char *ent)
-{
-	unsigned long index = hash(ent) % SOURCES_SET_SIZE;
-	return sources_insert(&set[index], ent);
-}
-
-void set_delete(node_t *set[], node_t *node)
-{
-	char *ent = ((src_t *)node->data)->src;
-	unsigned long index = hash(ent) % SOURCES_SET_SIZE;
-	sources_delete(&set[index], node);
-}
-
-void set_dispose(node_t *set[])
-{
-	for (int i = 0; i < SOURCES_SET_SIZE; i++)
-	{
-		sources_dispose(set[i]);
 	}
 }
