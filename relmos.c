@@ -6,8 +6,10 @@
 #define RED 'r'
 #define BLACK 'b'
 
-#define ENTITIES_SET_SIZE 1000
-#define SOURCES_SET_SIZE 200
+#define ENTITIES_SET_SIZE 100
+#define SOURCES_SET_SIZE 50
+#define TYPE_DSTS_SIZE 600
+#define TYPES_SIZE 10
 
 typedef struct node
 {
@@ -16,43 +18,51 @@ typedef struct node
 	struct node *left, *right, *parent;
 } node_t;
 
-typedef struct max
+/*typedef struct max
 {
 	char *name;
 	struct max *next;
-} max_t;
+} max_t;*/
 
 typedef struct typ
 {
 	char *name;
 	int count;
-	max_t *dsts;
-	struct typ *next;
+	//max_t *dsts;
+	char *dsts[TYPE_DSTS_SIZE];
+	int dstscount;
+	int heapsize;
+	//struct typ *next;
 } type_t;
 
-typedef struct rel
+/*typedef struct rel
 {
-	char *type;
+	//char *type;
+	int type;
 	struct rel *next;
-} rel_t;
+} rel_t;*/
 
 typedef struct el
 {
 	char *src;
-	rel_t *types;
+	//rel_t *types;
+	char types[TYPES_SIZE];
+	int typescount;
 } src_t;
 
-typedef struct cnt
+/*typedef struct cnt
 {
 	int count;
-	type_t *type;
+	//type_t *type;
+	int type;
 	struct cnt *next;
-} count_t;
+} count_t;*/
 
 typedef struct
 {
 	char *name;
-	count_t *counts;
+	//count_t *counts;
+	int counts[TYPES_SIZE];
 	node_t *sources[SOURCES_SET_SIZE];
 } ent_t;
 
@@ -66,14 +76,18 @@ void end();
 
 
 // private helper function
-type_t *_addreltype(char *name);
-type_t *_getreltype(char *name);
-void _delsrc(char *name, type_t *rel, ent_t *curr_dst);
+int _addreltype(char *name);
+int _getreltype(char *name);
+void _delsrc(char *name, int rel, ent_t *curr_dst);
 void _delsources(node_t *root, char *ent);
-void _increment(ent_t *dst, type_t *type);
-void _decrement(ent_t *dst, char *type);
+void _increment(ent_t *dst, int type);
+void _decrement(ent_t *dst, int type);
 char _buildreport(node_t *root);
 unsigned long hash(char *val);
+
+
+void build_max_heap(type_t *type);
+void max_heapify(type_t *type, int n, int index);
 
 
 // tree operations
@@ -106,11 +120,16 @@ static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
 
 // main data structures
 node_t *destinations[ENTITIES_SET_SIZE];
-type_t *types = NULL;
-
+//type_t *types = NULL;
+//type_t *types[TYPES_SIZE];
+struct {
+	type_t *list[TYPES_SIZE];
+	int count;
+} types;
 
 int main(int argc, char const *argv[])
 {
+	types.count = 0;
 	for (int i = 0; i < ENTITIES_SET_SIZE; i++)
 		destinations[i] = NIL;
 
@@ -218,7 +237,10 @@ void delent(char *entity)
 void addrel(char *src, char *dst, char *rel)
 {
 	// search if relation type already exists
-	type_t *curr_type = _addreltype(rel);
+	//type_t *curr_type = _addreltype(rel);
+	//int curr_type = _addreltype(rel);
+
+	//printf("%s: %d\n\n", rel, curr_type);
 
 	// lookup entities
 	node_t *src_ent = entities_search(destinations, src);
@@ -231,11 +253,25 @@ void addrel(char *src, char *dst, char *rel)
 	if (src_ent == NULL || dst_ent == NULL)
 		return;
 
+	int curr_type = _addreltype(rel);
+
 	// create source (if does not already exist)
 	src_t *curr_src = set_insert(((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
 
 	// lookup relation
-	rel_t *iter = curr_src->types;
+	if (curr_src->types[curr_type] > 0)
+		return;
+
+	// create relation	
+	curr_src->types[curr_type] = 1;
+	curr_src->typescount = curr_src->typescount + 1;
+	_increment((ent_t *)dst_ent->data, curr_type);
+
+	//rel_t *new_rel = malloc(sizeof(rel_t));
+	//new_rel->type = curr_type->name;
+	//new_rel->next = curr_src->types;
+	//curr_src->types = new_rel;
+	/*rel_t *iter = curr_src->types;
 	while (iter != NULL)
 	{
 		// relation already exists
@@ -249,13 +285,14 @@ void addrel(char *src, char *dst, char *rel)
 	new_rel->type = curr_type->name;
 	new_rel->next = curr_src->types;
 	curr_src->types = new_rel;
-	_increment((ent_t *)dst_ent->data, curr_type);
+	_increment((ent_t *)dst_ent->data, curr_type);*/
 }
 
 void delrel(char *src, char *dst, char *rel)
 {
 	// lookup relation type
-	type_t *relation = _getreltype(rel);
+	//type_t *relation = _getreltype(rel);
+	int relation = _getreltype(rel);
 	free(rel);
 
 	// lookup entities
@@ -266,7 +303,8 @@ void delrel(char *src, char *dst, char *rel)
 	free(dst);
 
 	// relation or an entity does not exist
-	if (relation == NULL || src_ent == NULL || dst_ent == NULL)
+	//if (relation == NULL || src_ent == NULL || dst_ent == NULL)
+	if (relation < 0 || src_ent == NULL || dst_ent == NULL)
 		return;
 	
 	// delete source
@@ -277,7 +315,7 @@ void report()
 {
 	// number of items added to the report
 	char empty = 1;
-	if (types != NULL)
+	if (types.count > 0)
 	{
 		for (int i = 0; i < ENTITIES_SET_SIZE; i++)
 		{
@@ -292,33 +330,64 @@ void report()
 	if (empty == 0)
 	{
 		char first = 1;
-		type_t *t = types;
-		while (t != NULL)
+		//type_t *t = types;
+		//while (t != NULL)
+		/*printf("%d: ", types.count);
+		for (int t = 0; t < types.count; t++)
+			printf("%d ", types.list[t]->dstscount);
+		printf("\n");*/
+
+		// sort types
+		type_t *tmp[TYPES_SIZE];
+		for (int i = 0; i < types.count; i++)
+			tmp[i] = types.list[i];
+			
+		for (int j = 1; j < types.count; j++)
 		{
-			if (t->count > 0)
+			type_t *t = tmp[j];
+			int i = j - 1;
+			while (i >= 0 && (strcmp(tmp[i]->name, t->name) > 0))
 			{
+				tmp[i + 1] = tmp[i];
+				i = i - 1;
+			}
+			tmp[i + 1] = t;
+		}
+		
+		for (int t = 0; t < types.count; t++)
+		{
+			if (tmp[t]->count > 0)
+			{
+				type_t *type = tmp[t];
 				if (first == 0)
 					printf(" ");
 				first = 0;
-				printf("%s ", t->name);
+				printf("%s ", type->name);
 
-				// sort dsts
-				max_t *curr = NULL, *i = NULL;
-				char *temp;
-				for (curr = t->dsts; curr->next != NULL; curr = curr->next)
+				// sort dsts TODO: merge sort
+				/*for (int j = 1; j < type->dstscount; j++)
 				{
-					for (i = curr->next; i != NULL; i = i->next)
+					char *tmp = type->dsts[j];
+					int i = j - 1;
+					while (i >= 0 && (strcmp(type->dsts[i], tmp) > 0))
 					{
-						if (strcmp(curr->name, i->name) > 0)
-						{
-							temp = curr->name;
-							curr->name = i->name;
-							i->name = temp;
-						}
+						type->dsts[i + 1] = type->dsts[i];
+						i = i - 1;
 					}
+					type->dsts[i + 1] = tmp;
+				}*/
+				// sort dsts
+				build_max_heap(type);
+				for (int i = type->dstscount - 1; i >= 0; i--)
+				{
+					char *tmp = type->dsts[0];
+					type->dsts[0] = type->dsts[i];
+					type->dsts[i] = tmp;
+					//type->heapsize = type->heapsize - 1;
+					max_heapify(type, i, 0);
 				}
 
-				max_t *m = t->dsts;
+				/*max_t *m = t->dsts;
 				while (t->dsts != NULL)
 				{
 					printf("%s ", t->dsts->name);
@@ -326,13 +395,20 @@ void report()
 					m = t->dsts;
 					t->dsts = m->next;
 					free(m);
+				}*/
+				for (int m = type->dstscount - 1; m >= 0; m--)
+				//for (int m = 0; m < type->dstscount; m++)
+				{
+					printf("%s ", type->dsts[m]);
 				}
 
-				printf("%d;", t->count);
-				t->count = 0;
+				printf("%d;", type->count);
+
+				type->dstscount = 0;
+				type->count = 0;
 			}
 
-			t = t->next;
+			//t = t->next;
 		}
 	}
 	else
@@ -349,7 +425,7 @@ void end()
 	entities_dispose(destinations);
 
 	// free types
-	type_t *type;
+	/*type_t *type;
 	while (types != NULL)
 	{
 		type = types;
@@ -363,14 +439,94 @@ void end()
 		}
 		free(type->name);
 		free(type);
+	}*/
+	for (int t = 0; t < types.count; t++)
+	{
+		free(types.list[t]->name);
+		free(types.list[t]);
 	}
 }
 
+void build_max_heap(type_t *type)
+{
+	//type->heapsize = type->dstscount;
+	for (int i = (type->dstscount / 2) - 1; i >= 0; i--)
+		max_heapify(type, type->dstscount, i);
+}
+
+void max_heapify(type_t *type, int n, int index)
+{
+	int l = 2 * index + 1;
+	int r = 2 * index + 2;
+	int max;
+	if (l <= n && strcmp(type->dsts[l], type->dsts[index]) > 0)
+		max = l;
+	else
+		max = index;
+	if (r <= n && strcmp(type->dsts[r], type->dsts[index]) > 0)
+		max = r;
+	if (max != index)
+	{
+		char *tmp = type->dsts[index];
+		type->dsts[index] = type->dsts[max];
+		type->dsts[max] = tmp;
+		max_heapify(type, n, max);
+	}
+}
 
 // private helper function
-type_t *_addreltype(char *name)
+int _addreltype(char *name)
 {
-	type_t *curr_type = types;
+	//for (int i = 0; i < types.count; i++)
+	//	printf("%s ", types.list[i]->name);
+	//printf("\n");
+	for (int i = 0; i < types.count; i++)
+	{
+		int cmp = strcmp(name, types.list[i]->name);
+		if (cmp == 0)
+		{
+			free(name);
+			return i;
+		}
+		/*else
+		{
+			if (cmp < 0)
+			{
+				for (int j = types.count; j > i; j--)
+				{
+					types.list[j] = types.list[j - 1];
+				}
+
+				type_t *new = malloc(sizeof(type_t));
+				new->name = name;
+				new->count = 0;
+				new->dstscount = 0;
+				
+				types.list[i] = new;
+				types.count++;
+				return i;
+			}
+		}*/
+	}
+
+	type_t *new = malloc(sizeof(type_t));
+	new->name = name;
+	new->count = 0;
+	new->dstscount = 0;
+	
+	types.list[types.count] = new;
+	types.count++;
+
+	//printf("added @ %d\n", types.count - 1);
+	return types.count - 1;
+
+	/*printf("after: ");
+	for (int i = 0; i < types.count; i++)
+		printf("%s ", types.list[i]->name);
+	printf("\n");
+	return types.count - 1;*/
+
+	/*type_t *curr_type = types;
 	type_t *ins_type = NULL;
 	while (curr_type != NULL)
 	{
@@ -406,12 +562,13 @@ type_t *_addreltype(char *name)
 		ins_type->next = new_type;
 	}
 
-	return new_type;
+	return new_type;*/
+	//return NULL;
 }
 
-type_t *_getreltype(char *name)
+int _getreltype(char *name)
 {
-	type_t *curr = types;
+	/*type_t *curr = types;
 	while (curr != NULL)
 	{
 		if (strcmp(name, curr->name) == 0)
@@ -420,10 +577,16 @@ type_t *_getreltype(char *name)
 		}
 		curr = curr->next;
 	}
-	return NULL;
+	return NULL;*/
+	for (int i = 0; i < types.count; i++)
+	{
+		if (strcmp(name, types.list[i]->name) == 0)
+			return i;
+	}
+	return -1;
 }
 
-void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
+void _delsrc(char *name, int rel, ent_t *curr_dst)
 {
 	// if rel != NULL
 	// then delete only specific relation
@@ -433,10 +596,10 @@ void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 	if (curr_src == NULL)
 		return;
 
-	if (rel != NULL)
+	if (rel > -1)
 	{
 		// delete only a relation
-		rel_t *iter = ((src_t *)curr_src->data)->types;
+		/*rel_t *iter = ((src_t *)curr_src->data)->types;
 		rel_t *p = NULL;
 		while (iter != NULL)
 		{
@@ -461,10 +624,14 @@ void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 				p = iter;
 				iter = iter->next;	
 			}
-		}
+		}*/
+		((src_t *)curr_src->data)->types[rel] = 0;
+		((src_t *)curr_src->data)->typescount = ((src_t *)curr_src->data)->typescount - 1;
+		_decrement(curr_dst, rel);
 
 		// delete source if it does not have any relation
-		if (((src_t *)curr_src->data)->types == NULL)
+		//if (((src_t *)curr_src->data)->types == NULL)
+		if (((src_t *)curr_src->data)->typescount == 0)
 		{
 			set_delete(curr_dst->sources, curr_src);
 			return;
@@ -473,13 +640,18 @@ void _delsrc(char *name, type_t *rel, ent_t *curr_dst)
 	else
 	{
 		// delete all relations
-		rel_t *r;
+		/*rel_t *r;
 		while (((src_t *)curr_src->data)->types != NULL)
 		{
 			_decrement(curr_dst, ((src_t *)curr_src->data)->types->type);
 			r = ((src_t *)curr_src->data)->types;
 			((src_t *)curr_src->data)->types = r->next;
 			free(r);
+		}*/
+		for (int i = 0; i < types.count; i++)
+		{
+			if (((src_t *)curr_src->data)->types[i] == 1)
+				_decrement(curr_dst, i);
 		}
 
 		// delete source
@@ -501,7 +673,7 @@ void _delsources(node_t *root, char *ent)
 		}
 
 		if (((ent_t *)root->data)->name != ent)
-			_delsrc(ent, NULL, (ent_t *)root->data);
+			_delsrc(ent, -1, (ent_t *)root->data);
 		
 		leftdone = 1;
 
@@ -525,9 +697,9 @@ void _delsources(node_t *root, char *ent)
 	}
 }
 
-void _increment(ent_t *dst, type_t *type)
+void _increment(ent_t *dst, int type)
 {
-	count_t *curr = dst->counts;
+	/*count_t *curr = dst->counts;
 	while (curr != NULL)
 	{
 		if (type == curr->type)
@@ -542,12 +714,13 @@ void _increment(ent_t *dst, type_t *type)
 	curr->count = 1;
 	curr->type = type;
 	curr->next = dst->counts;
-	dst->counts = curr;
+	dst->counts = curr;*/
+	dst->counts[type] = dst->counts[type] + 1;
 }
 
-void _decrement(ent_t *dst, char *type)
+void _decrement(ent_t *dst, int type)
 {
-	count_t *curr = dst->counts;
+	/*count_t *curr = dst->counts;
 	while (curr != NULL)
 	{
 		if (type == curr->type->name)
@@ -556,7 +729,8 @@ void _decrement(ent_t *dst, char *type)
 			return;
 		}
 		curr = curr->next;
-	}
+	}*/
+	dst->counts[type] = dst->counts[type] - 1;
 }
 
 char _buildreport(node_t *root)
@@ -574,7 +748,7 @@ char _buildreport(node_t *root)
 		}
 
 		// start build report
-		count_t *count = ((ent_t *)root->data)->counts;
+		/*count_t *count = ((ent_t *)root->data)->counts;
 		// iterate through destination counts
 		while (count != NULL)
 		{
@@ -621,6 +795,27 @@ char _buildreport(node_t *root)
 			}
 
 			count = count->next;
+		}*/
+		for (int c = 0; c < types.count; c++)
+		{
+			int count = ((ent_t *)root->data)->counts[c];
+			// if current count is bigger
+			if (count > types.list[c]->count)
+			{
+				types.list[c]->count = count;
+
+				types.list[c]->dsts[0] = ((ent_t *)root->data)->name;
+				types.list[c]->dstscount = 1;
+
+				empty = 0;
+			}
+			// if current count is equal
+			// add the current dst
+			else if (count > 0 && count == types.list[c]->count)
+			{
+				types.list[c]->dsts[types.list[c]->dstscount] = ((ent_t *)root->data)->name;
+				types.list[c]->dstscount = types.list[c]->dstscount + 1;
+			}
 		}
 		// end build report
 		
@@ -889,7 +1084,9 @@ void entities_insert(node_t *set[], char *ent)
 
 	node_t *z = malloc(sizeof(node_t));
 	z->data = malloc(sizeof(ent_t));
-	((ent_t *)z->data)->counts = NULL;
+	//((ent_t *)z->data)->counts = NULL;
+	for (int i = 0; i < TYPES_SIZE; i++)
+		((ent_t *)z->data)->counts[i] = 0;
 	for (int i = 0; i < SOURCES_SET_SIZE; i++)
 		((ent_t *)z->data)->sources[i] = NIL;
 	((ent_t *)z->data)->name = ent;
@@ -913,13 +1110,13 @@ void entities_delete(node_t *set[], node_t *z)
 
 	set_dispose(((ent_t *)z->data)->sources);
 
-	count_t *c;
+	/*count_t *c;
 	while (((ent_t *)z->data)->counts != NULL)
 	{
 		c = ((ent_t *)z->data)->counts;
 		((ent_t *)z->data)->counts = c->next;
 		free(c);
-	}
+	}*/
 
 	free(((ent_t *)z->data)->name);
 	free((ent_t *)z->data);
@@ -969,13 +1166,13 @@ void entities_cell_dispose(node_t *x)
 
 	set_dispose(((ent_t *)x->data)->sources);
 
-	count_t *c;
+	/*count_t *c;
 	while (((ent_t *)x->data)->counts != NULL)
 	{
 		c = ((ent_t *)x->data)->counts;
 		((ent_t *)x->data)->counts = c->next;
 		free(c);
-	}
+	}*/
 
 	free(((ent_t *)x->data)->name);
 	free((ent_t *)x->data);
@@ -1020,8 +1217,11 @@ src_t *sources_insert(node_t **root, char *ent)
 
 	node_t *z = malloc(sizeof(node_t));
 	z->data = malloc(sizeof(src_t));
-	((src_t *)z->data)->types = NULL;
+	//((src_t *)z->data)->types = NULL;
 	((src_t *)z->data)->src = ent;
+	((src_t *)z->data)->typescount = 0;
+	for (int i = 0; i < TYPES_SIZE; i++)
+		((src_t *)z->data)->types[i] = 0;
 	z->parent = y;
 	if (y == NIL)
 		(*root) = z;
@@ -1075,13 +1275,13 @@ void sources_dispose(node_t *x)
 		sources_dispose(x->left);
 		sources_dispose(x->right);
 
-		rel_t *r;
+		/*rel_t *r;
 		while (((src_t *)x->data)->types != NULL)
 		{
 			r = ((src_t *)x->data)->types;
 			((src_t *)x->data)->types = r->next;
 			free(r);
-		}
+		}*/
 
 		free((src_t *)x->data);
 		free(x);
