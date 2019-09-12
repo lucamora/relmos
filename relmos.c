@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_INPUT 50
+#define MAX_INPUT 40
 #define RED 'r'
 #define BLACK 'b'
 
@@ -97,8 +97,6 @@ int main(int argc, char const *argv[])
 	ordered.lastcount = 0;
 
 	char cmd[7];
-	size_t len = 0;
-	int read = 0;
 	char *src = NULL, *dst = NULL, *rel = NULL;
 
 	do
@@ -110,11 +108,9 @@ int main(int argc, char const *argv[])
 			if (cmd[3] == 'e')
 			{
 				// addent
-				src = NULL;
-				len = 0;
-				read = getline(&src, &len, stdin);
-				src[read - 1] = '\0';
-				//printf("addent: entity: '%s' (%d)\n", src, read);
+				src = malloc(MAX_INPUT);
+				scanf("%s", src);
+
 				addent(src);
 			}
 			else
@@ -125,7 +121,6 @@ int main(int argc, char const *argv[])
 				rel = malloc(MAX_INPUT);
 				scanf("%s%*c%s%*c%s", src, dst, rel);
 
-				//printf("addrel: src: '%s', dst: '%s', relation: '%s'\n", src, dst, rel);
 				addrel(src, dst, rel);
 			}
 		}
@@ -135,11 +130,9 @@ int main(int argc, char const *argv[])
 			if (cmd[3] == 'e')
 			{
 				// delent
-				src = NULL;
-				len = 0;
-				read = getline(&src, &len, stdin);
-				src[read - 1] = '\0';
-				//printf("delent: entity: '%s'\n", src);
+				src = malloc(MAX_INPUT);
+				scanf("%s", src);
+
 				delent(src);
 			}
 			else
@@ -150,20 +143,17 @@ int main(int argc, char const *argv[])
 				rel = malloc(MAX_INPUT);
 				scanf("%s%*c%s%*c%s", src, dst, rel);
 
-				//printf("delrel: src: '%s', dst: '%s', relation: '%s'\n", src, dst, rel);
 				delrel(src, dst, rel);
 			}
 		}
 		else if (cmd[0] == 'r')
 		{
 			// report
-			//printf("report\n");
 			report();
 		}
 		else if (cmd[0] == 'e')
 		{
 			// end
-			//printf("fine\n");
 			end();
 			return 0;
 		}
