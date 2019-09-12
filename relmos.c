@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_INPUT 100
+#define MAX_INPUT 50
 #define RED 'r'
 #define BLACK 'b'
 
@@ -51,10 +51,10 @@ void end();
 int _addreltype(char *name);
 int _getreltype(char *name);
 void _delsrc(char *name, int rel, ent_t *curr_dst);
-void _delsources(node_t *root, char *ent);
+void _delsources(node_t *x, char *ent);
 void _increment(ent_t *dst, int type);
 void _decrement(ent_t *dst, int type);
-char _buildreport(node_t *root);
+int _buildreport(node_t *x);
 
 
 // tree operations
@@ -261,13 +261,13 @@ void delrel(char *src, char *dst, char *rel)
 void report()
 {
 	// number of items added to the report
-	char empty = 1;
+	int added = 0;
 	if (types.count > 0)
 	{
-		empty = _buildreport(entities);
+		added = _buildreport(entities);
 	}
 
-	if (empty == 0)
+	if (added > 0)
 	{
 		char first = 1;
 
@@ -412,42 +412,16 @@ void _delsrc(char *name, int rel, ent_t *curr_dst)
 	}
 }
 
-void _delsources(node_t *root, char *ent)
+void _delsources(node_t *x, char *ent)
 {
-	char leftdone = 0;
-	char end = 0;
+	if (x == NIL)
+		return;
 
-	while (root != NIL && end == 0)
-	{
-		if (leftdone == 0)
-		{
-			while (root->left != NIL)
-				root = root->left;
-		}
+	if (((ent_t *)x->data)->name != ent)
+		_delsrc(ent, -1, (ent_t *)x->data);
 
-		if (((ent_t *)root->data)->name != ent)
-			_delsrc(ent, -1, (ent_t *)root->data);
-		
-		leftdone = 1;
-
-		if (root->right != NIL)
-		{
-			leftdone = 0;
-			root = root->right;
-		}
-		else if (root->parent != NIL)
-		{
-			while (root->parent != NIL && root == root->parent->right)
-				root = root->parent;
-			if (root->parent == NIL)
-				end = 1;
-			else
-				root = root->parent;
-		}
-		else
-			end = 1;
-		
-	}
+	_delsources(x->left, ent);
+	_delsources(x->right, ent);
 }
 
 void _increment(ent_t *dst, int type)
@@ -460,66 +434,38 @@ void _decrement(ent_t *dst, int type)
 	dst->counts[type] = dst->counts[type] - 1;
 }
 
-char _buildreport(node_t *root)
+int _buildreport(node_t *x)
 {
-	char leftdone = 0;
-	char end = 0;
-	char empty = 1;
+	if (x == NIL)
+		return 0;
 
-	while (root != NIL && end == 0)
+	int added = _buildreport(x->left);
+
+	// start build report
+	for (int c = 0; c < types.count; c++)
 	{
-		if (leftdone == 0)
+		int count = ((ent_t *)x->data)->counts[c];
+		// if current count is bigger
+		if (count > types.list[c]->count)
 		{
-			while (root->left != NIL)
-				root = root->left;
-		}
+			types.list[c]->count = count;
 
-		// start build report
-		for (int c = 0; c < types.count; c++)
+			types.list[c]->dsts[0] = ((ent_t *)x->data)->name;
+			types.list[c]->dstscount = 1;
+
+			added = 1;
+		}
+		// if current count is equal
+		// add the current dst
+		else if (count > 0 && count == types.list[c]->count)
 		{
-			int count = ((ent_t *)root->data)->counts[c];
-			// if current count is bigger
-			if (count > types.list[c]->count)
-			{
-				types.list[c]->count = count;
-
-				types.list[c]->dsts[0] = ((ent_t *)root->data)->name;
-				types.list[c]->dstscount = 1;
-
-				empty = 0;
-			}
-			// if current count is equal
-			// add the current dst
-			else if (count > 0 && count == types.list[c]->count)
-			{
-				types.list[c]->dsts[types.list[c]->dstscount] = ((ent_t *)root->data)->name;
-				types.list[c]->dstscount = types.list[c]->dstscount + 1;
-			}
+			types.list[c]->dsts[types.list[c]->dstscount] = ((ent_t *)x->data)->name;
+			types.list[c]->dstscount = types.list[c]->dstscount + 1;
 		}
-		// end build report
-		
-		leftdone = 1;
-
-		if (root->right != NIL)
-		{
-			leftdone = 0;
-			root = root->right;
-		}
-		else if (root->parent != NIL)
-		{
-			while (root->parent != NIL && root == root->parent->right)
-				root = root->parent;
-			if (root->parent == NIL)
-				end = 1;
-			else
-				root = root->parent;
-		}
-		else
-			end = 1;
-		
 	}
+	// end build report
 
-	return empty;
+	return added + _buildreport(x->right);
 }
 
 
