@@ -2,43 +2,42 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_INPUT 100
+#define MAX_INPUT 40
+#define RED 'r'
+#define BLACK 'b'
 
-typedef struct ent
-{
-	char *name;
-	struct ent *next;
-} ent_t;
+#define TYPE_DSTS_SIZE 600
+#define TYPES_SIZE 5
 
 typedef struct node
 {
-	ent_t *src;
-	struct node *next;
+	void *data;
+	char color;
+	struct node *left, *right, *parent;
+} node_t;
+
+typedef struct typ
+{
+	char *name;
+	int count;
+	char *dsts[TYPE_DSTS_SIZE];
+	int dstscount;
+} type_t;
+
+typedef struct el
+{
+	char *src;
+	char types[TYPES_SIZE];
+	int typescount;
 } src_t;
 
-typedef struct elem
-{
-	ent_t *dst;
-	int count;
-	src_t *sources;
-	struct elem *next;
-} dst_t;
-
-typedef struct rel
+typedef struct
 {
 	char *name;
-	dst_t *instances;
-	struct rel *next;
-} rel_type_t;
+	int counts[TYPES_SIZE];
+	node_t *sources;
+} ent_t;
 
-typedef struct max
-{
-	char *name;
-	struct max *next;
-} max_t;
-
-ent_t *entities = NULL;
-rel_type_t *relations = NULL;
 
 void addent(char *entity);
 void delent(char *entity);
@@ -47,19 +46,57 @@ void delrel(char *src, char *dst, char *rel);
 void report();
 void end();
 
-ent_t *_getent(char *name);
-ent_t *_getprevent(char *name);
-dst_t *_getprevdst(char *name, dst_t *relation);
-src_t *_getprevsrc(char *name, src_t *sources);
-rel_type_t *_getreltype(char *name);
-void _delsrc(char *name, dst_t *curr_dst);
-void _deldst(dst_t *prev, dst_t *curr, dst_t **relation);
+
+// private helper function
+int _addreltype(char *name);
+int _getreltype(char *name);
+void _delsrc(char *name, int rel, ent_t *curr_dst);
+void _delsources(node_t *x, char *ent);
+void _increment(ent_t *dst, int type);
+void _decrement(ent_t *dst, int type);
+int _buildreport(node_t *x);
+
+
+// tree operations
+void tree_left_rotate(node_t **root, node_t *x);
+void tree_right_rotate(node_t **root, node_t *x);
+void tree_insert_fixup(node_t **root, node_t *z);
+void tree_delete_fixup(node_t **root, node_t *x);
+node_t *tree_minimum(node_t *x);
+node_t *tree_successor(node_t *x);
+
+#define NIL (&nil)
+static node_t nil = { NULL, BLACK, &nil, &nil, &nil };
+
+node_t *entities_search(node_t *root, char *ent);
+void entities_insert(node_t **root, char *ent);
+void entities_delete(node_t **root, node_t *z);
+void entities_dispose(node_t *root);
+
+node_t *sources_search(node_t *node, char *ent);
+src_t *sources_insert(node_t **root, char *ent);
+void sources_delete(node_t **root, node_t *z);
+void sources_dispose(node_t *x);
+
+
+// main data structures
+node_t *entities = NIL;
+struct {
+	type_t *list[TYPES_SIZE];
+	int count;
+} types;
+
+struct {
+	type_t *list[TYPES_SIZE];
+	int lastcount;
+} ordered;
 
 int main(int argc, char const *argv[])
 {
+	types.count = 0;
+	ordered.lastcount = 0;
+
 	char cmd[7];
-	size_t len = 0;
-	int read = 0;
 	char *src = NULL, *dst = NULL, *rel = NULL;
 
 	do
@@ -71,11 +108,9 @@ int main(int argc, char const *argv[])
 			if (cmd[3] == 'e')
 			{
 				// addent
-				src = NULL;
-				len = 0;
-				read = getline(&src, &len, stdin);
-				src[read - 1] = '\0';
-				//printf("addent: entity: '%s' (%d)\n", src, read);
+				src = malloc(MAX_INPUT);
+				scanf("%s", src);
+
 				addent(src);
 			}
 			else
@@ -86,7 +121,6 @@ int main(int argc, char const *argv[])
 				rel = malloc(MAX_INPUT);
 				scanf("%s%*c%s%*c%s", src, dst, rel);
 
-				//printf("addrel: src: '%s', dst: '%s', relation: '%s'\n", src, dst, rel);
 				addrel(src, dst, rel);
 			}
 		}
@@ -96,11 +130,9 @@ int main(int argc, char const *argv[])
 			if (cmd[3] == 'e')
 			{
 				// delent
-				src = NULL;
-				len = 0;
-				read = getline(&src, &len, stdin);
-				src[read - 1] = '\0';
-				//printf("delent: entity: '%s'\n", src);
+				src = malloc(MAX_INPUT);
+				scanf("%s", src);
+
 				delent(src);
 			}
 			else
@@ -111,20 +143,17 @@ int main(int argc, char const *argv[])
 				rel = malloc(MAX_INPUT);
 				scanf("%s%*c%s%*c%s", src, dst, rel);
 
-				//printf("delrel: src: '%s', dst: '%s', relation: '%s'\n", src, dst, rel);
 				delrel(src, dst, rel);
 			}
 		}
 		else if (cmd[0] == 'r')
 		{
 			// report
-			//printf("report\n");
 			report();
 		}
 		else if (cmd[0] == 'e')
 		{
 			// end
-			//printf("fine\n");
 			end();
 			return 0;
 		}
@@ -133,304 +162,151 @@ int main(int argc, char const *argv[])
 
 void addent(char *entity)
 {
-	ent_t *found = _getent(entity);
-
-	if (found != NULL) {
-		// entity already exists
-		free(entity);
-		return;
-	}
-
-	// create and insert new entity
-	ent_t *tmp = malloc(sizeof(ent_t));
-	tmp->name = entity;
-	tmp->next = entities;
-	entities = tmp;
+	entities_insert(&entities, entity);
 }
 
 void delent(char *entity)
 {
-	ent_t *prev_ent = _getprevent(entity);
-	ent_t *curr_ent = (prev_ent != NULL) ? prev_ent->next : entities;
-
-	if (curr_ent == NULL) {
-		// entity does not exist
-		free(entity);
-		return;
-	}
-
-	// remove entity from every relation
-	rel_type_t *rel_type = relations;
-	while (rel_type != NULL)
-	{
-		dst_t *curr_dst = rel_type->instances;
-		dst_t *prev_dst = NULL;
-		while (curr_dst != NULL)
-		{
-			if (strcmp(entity, curr_dst->dst->name) == 0)
-			{
-				// remove from destinations
-				_deldst(prev_dst, curr_dst, &rel_type->instances);
-
-				// if there is a previous dst
-				// current is its next
-				// otherwise current is the first element
-				curr_dst = (prev_dst != NULL) ? prev_dst->next : rel_type->instances;
-			}
-			else
-			{
-				// remove from sources
-				_delsrc(entity, curr_dst);
-				
-				if (curr_dst->count == 0)
-				{
-					// all relations to this entity have been deleted
-					// remove from destinations
-					_deldst(prev_dst, curr_dst, &rel_type->instances);
-
-					// if there is a previous dst
-					// current is its next
-					// otherwise current is the first element
-					curr_dst = (prev_dst != NULL) ? prev_dst->next : rel_type->instances;
-				}
-				else
-				{
-					prev_dst = curr_dst;
-					curr_dst = curr_dst->next;
-				}
-			}
-		}
-
-		rel_type = rel_type->next;
-	}
-
-	// remove entity
-	if (prev_ent == NULL)
-	{
-		entities = curr_ent->next;
-	}
-	else
-	{
-		prev_ent->next = curr_ent->next;
-	}
-
-	free(curr_ent->name);
-	free(curr_ent);
+	// lookup entity
+	node_t *curr_ent = entities_search(entities, entity);
 	free(entity);
+
+	// entity does not exist
+	if (curr_ent == NULL)
+		return;
+
+	// delete all occurrencies in other sources
+	_delsources(entities, ((ent_t *)curr_ent->data)->name);
+
+	// delete entity
+	entities_delete(&entities, curr_ent);
 }
 
 void addrel(char *src, char *dst, char *rel)
 {
-	// search if relation type already exists
-	rel_type_t *curr_type = relations;
-	rel_type_t *ins_type = NULL;
-	char found_type = 0;
-	while (curr_type != NULL && found_type == 0)
+	// lookup entities
+	node_t *src_ent = entities_search(entities, src);
+	free(src);
+	if (src_ent == NULL)
 	{
-		int cmp = strcmp(rel, curr_type->name);
-		if (cmp == 0)
-		{
-			found_type = 1;
-		}
-		else
-		{
-			if (cmp > 0)
-			{
-				ins_type = curr_type;
-			}
-			curr_type = curr_type->next;
-		}
+		free(dst);
+		free(rel);
+		return;
 	}
-
-	// create relation type
-	if (found_type == 0)
-	{
-		rel_type_t *new_type = malloc(sizeof(rel_type_t));
-		new_type->name = rel;
-		new_type->instances = NULL;
-		if (ins_type == NULL)
-		{
-			new_type->next = relations;
-			relations = new_type;
-		}
-		else
-		{
-			new_type->next = ins_type->next;
-			ins_type->next = new_type;
-		}
-		
-		curr_type = new_type;
-	}
-	else
+	
+	node_t *dst_ent = entities_search(entities, dst);
+	free(dst);
+	if (dst_ent == NULL)
 	{
 		free(rel);
-	}
-	
-
-	ent_t *src_ent = _getent(src);
-	ent_t *dst_ent = _getent(dst);
-
-	free(src);
-	free(dst);
-
-	if (src_ent == NULL || dst_ent == NULL) {
 		return;
 	}
 
-	dst_t *curr_dst = curr_type->instances;
-	dst_t *ins = NULL;
-	char found_dst = 0;
-	while (curr_dst != NULL && found_dst == 0)
-	{
-		int cmp = strcmp(dst_ent->name, curr_dst->dst->name);
-		if (cmp == 0)
-		{
-			found_dst = 1;
-		}
-		else
-		{
-			if (cmp < 0)
-			{
-				ins = curr_dst;
-			}
-			curr_dst = curr_dst->next;	
-		}
-	}
+	// search if relation type already exists
+	int curr_type = _addreltype(rel);
 
-	if (found_dst == 0)
-	{
-		dst_t *new_dst = malloc(sizeof(dst_t));
-		new_dst->dst = dst_ent;
-		new_dst->count = 0;
-		new_dst->sources = NULL;
+	// create source (if does not already exist)
+	src_t *curr_src = sources_insert(&((ent_t *)dst_ent->data)->sources, ((ent_t *)src_ent->data)->name);
 
-		if (ins == NULL)
-		{
-			new_dst->next = curr_type->instances;
-			curr_type->instances = new_dst;
-		}
-		else
-		{
-			new_dst->next = ins->next;
-			ins->next = new_dst;
-		}
-
-		curr_dst = new_dst;
-	}
-
-	src_t *prev_src = _getprevsrc(src_ent->name, curr_dst->sources);
-	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
-
-	if (curr_src != NULL) {
-		// relation already exists
+	// lookup relation
+	if (curr_src->types[curr_type] > 0)
 		return;
-	}
-	
-	src_t *new_src = malloc(sizeof(src_t));
-	new_src->src = src_ent;
-	new_src->next = curr_dst->sources;
-	curr_dst->sources = new_src;
-	curr_dst->count = curr_dst->count + 1;
+
+	// create relation	
+	curr_src->types[curr_type] = 1;
+	curr_src->typescount = curr_src->typescount + 1;
+	_increment((ent_t *)dst_ent->data, curr_type);
 }
 
 void delrel(char *src, char *dst, char *rel)
 {
-	rel_type_t *relation = _getreltype(rel);
+	// lookup relation type
+	int relation = _getreltype(rel);
 	free(rel);
-
-	if (relation == NULL) {
-		// relation does not exist
-		free(dst);
+	if (relation < 0)
+	{
 		free(src);
+		free(dst);
 		return;
 	}
 
-	dst_t *prev_dst = _getprevdst(dst, relation->instances);
-	dst_t *curr_dst = (prev_dst != NULL) ? prev_dst->next : relation->instances;
-
-	if (curr_dst != NULL)
+	// lookup entities
+	node_t *src_ent = entities_search(entities, src);
+	free(src);
+	if (src_ent == NULL)
 	{
-		_delsrc(src, curr_dst);
-
-		if (curr_dst->count == 0)
-		{
-			_deldst(prev_dst, curr_dst, &relation->instances);
-		}
+		free(dst);
+		return;
 	}
 
+	node_t *dst_ent = entities_search(entities, dst);
 	free(dst);
-	free(src);
+	if (dst_ent == NULL)
+		return;
+	
+	// delete source
+	_delsrc(((ent_t *)src_ent->data)->name, relation, (ent_t *)dst_ent->data);
 }
 
 void report()
 {
-	char empty = 1;
-	char first = 1;
-
-	rel_type_t *curr_type = relations;
-	while (curr_type != NULL)
+	// number of items added to the report
+	int added = 0;
+	if (types.count > 0)
 	{
-		if (curr_type->instances != NULL)
-		{
-			empty = 0;
-			dst_t *relation = curr_type->instances;
-
-			max_t *dsts = malloc(sizeof(max_t));
-			dsts->name = relation->dst->name;
-			dsts->next = NULL;
-			int max = relation->count;
-
-			dst_t *curr = relation->next;
-			while (curr != NULL)
-			{
-				if (curr->count > max)
-				{
-					max = curr->count;
-
-					max_t *c;
-					while (dsts->next != NULL)
-					{
-						c = dsts;
-						dsts = c->next;
-						free(c);
-					}
-					
-					dsts->name = curr->dst->name;
-				}
-				else if (curr->count == max)
-				{
-					max_t *new = malloc(sizeof(max_t));
-					new->name = curr->dst->name;
-					new->next = dsts;
-					dsts = new;
-				}
-
-				curr = curr->next;
-			}
-
-			max_t *tmp;
-			if (first == 0) {
-				printf(" ");
-			}
-			first = 0;
-
-			printf("%s ", curr_type->name);
-			while (dsts != NULL)
-			{
-				printf("%s ", dsts->name);
-
-				tmp = dsts;
-				dsts = tmp->next;
-				free(tmp);
-			}
-
-			printf("%d;", max);
-		}
-
-		curr_type = curr_type->next;
+		added = _buildreport(entities);
 	}
 
-	if (empty == 1)
+	if (added > 0)
+	{
+		char first = 1;
+
+		// compare with last ordered and reorder only if necessary
+		if (types.count != ordered.lastcount)
+		{
+			ordered.lastcount = types.count;
+
+			for (int i = 0; i < types.count; i++)
+				ordered.list[i] = types.list[i];
+
+			// sort types (insertion sort)
+			for (int j = 1; j < types.count; j++)
+			{
+				type_t *t = ordered.list[j];
+				int i = j - 1;
+				while (i >= 0 && (strcmp(ordered.list[i]->name, t->name) > 0))
+				{
+					ordered.list[i + 1] = ordered.list[i];
+					i = i - 1;
+				}
+				ordered.list[i + 1] = t;
+			}
+		}
+		
+		for (int t = 0; t < types.count; t++)
+		{
+			if (ordered.list[t]->count > 0)
+			{
+				type_t *type = ordered.list[t];
+				if (first == 0)
+					printf(" ");
+				first = 0;
+				printf("%s ", type->name);
+
+				for (int m = type->dstscount - 1; m >= 0; m--)
+				{
+					printf("%s ", type->dsts[m]);
+				}
+
+				printf("%d;", type->count);
+
+				type->dstscount = 0;
+				type->count = 0;
+			}
+
+		}
+	}
+	else
 	{
 		printf("none");
 	}
@@ -440,161 +316,542 @@ void report()
 
 void end()
 {
-	// free relations and destinations
-	rel_type_t *rel;
-	while (relations != NULL)
-	{
-		rel = relations;
-		relations = rel->next;
-
-		dst_t *dst;
-		while (rel->instances != NULL)
-		{
-			dst = rel->instances;
-			rel->instances = dst->next;
-			_deldst(NULL, dst, &rel->instances);
-		}
-
-		free(rel->name);
-		free(rel);
-	}
-
 	// free entities
-	ent_t *ent;
-	while (entities != NULL)
+	entities_dispose(entities);
+
+	// free types
+	for (int t = 0; t < types.count; t++)
 	{
-		ent = entities;
-		entities = ent->next;
-		free(ent->name);
-		free(ent);
+		free(types.list[t]->name);
+		free(types.list[t]);
 	}
 }
 
-ent_t *_getent(char *name)
+
+// private helper function
+int _addreltype(char *name)
 {
-	ent_t *curr = entities;
-	while (curr != NULL)
+	for (int i = 0; i < types.count; i++)
 	{
-		if (strcmp(name, curr->name) == 0)
+		int cmp = strcmp(name, types.list[i]->name);
+		if (cmp == 0)
 		{
-			return curr;
+			free(name);
+			return i;
 		}
-		curr = curr->next;
-	}
-	return NULL;
-}
-
-ent_t *_getprevent(char *name)
-{
-	ent_t *curr = entities;
-	ent_t *prev = NULL;
-	while (curr != NULL)
-	{
-		if (strcmp(name, curr->name) == 0)
-		{
-			return prev;
-		}
-		else
-		{
-			prev = curr;
-			curr = curr->next;
-		}
-	}
-	return prev;
-}
-
-dst_t *_getprevdst(char *name, dst_t *relation)
-{
-	dst_t *curr = relation;
-	dst_t *prev = NULL;
-	while (curr != NULL)
-	{
-		if (strcmp(name, curr->dst->name) == 0)
-		{
-			return prev;
-		}
-		else
-		{
-			prev = curr;
-			curr = curr->next;
-		}
-	}
-	return prev;
-}
-
-src_t *_getprevsrc(char *name, src_t *sources)
-{
-	src_t *curr = sources;
-	src_t *prev = NULL;
-	while (curr != NULL)
-	{
-		if (strcmp(name, curr->src->name) == 0)
-		{
-			return prev;
-		}
-		else
-		{
-			prev = curr;
-			curr = curr->next;
-		}
-	}
-	return prev;
-}
-
-rel_type_t *_getreltype(char *name)
-{
-	rel_type_t *curr = relations;
-	while (curr != NULL)
-	{
-		if (strcmp(name, curr->name) == 0)
-		{
-			return curr;
-		}
-		curr = curr->next;
-	}
-	return NULL;
-}
-
-void _delsrc(char *name, dst_t *curr_dst)
-{
-	src_t *prev_src = _getprevsrc(name, curr_dst->sources);
-	src_t *curr_src = (prev_src != NULL) ? prev_src->next : curr_dst->sources;
-
-	if (curr_src != NULL)
-	{
-		if (prev_src == NULL)
-		{
-			curr_dst->sources = curr_src->next;
-		}
-		else
-		{
-			prev_src->next = curr_src->next;
-		}
-
-		free(curr_src);
-
-		curr_dst->count = curr_dst->count - 1;
-	}
-}
-
-void _deldst(dst_t *prev, dst_t *curr, dst_t **relation)
-{
-	if (prev == NULL)
-	{
-		*relation = curr->next;
 	}
 	else
 	{
-		prev->next = curr->next;
+		free(rel);
 	}
+	
 
-	src_t *c;
-	while (curr->sources != NULL)
+	type_t *new = malloc(sizeof(type_t));
+	new->name = name;
+	new->count = 0;
+	new->dstscount = 0;
+	
+	types.list[types.count] = new;
+	types.count++;
+
+	return types.count - 1;
+}
+
+int _getreltype(char *name)
+{
+	for (int i = 0; i < types.count; i++)
 	{
-		c = curr->sources;
-		curr->sources = c->next;
-		free(c);
+		if (strcmp(name, types.list[i]->name) == 0)
+			return i;
+	}
+	return -1;
+}
+
+void _delsrc(char *name, int rel, ent_t *curr_dst)
+{
+	// if rel > -1
+	// then delete only specific relation
+	// else delete all relations
+	node_t *curr_src = sources_search(curr_dst->sources, name);
+
+	if (curr_src == NULL)
+		return;
+
+	if (rel > -1)
+	{
+		if (((src_t *)curr_src->data)->types[rel] == 1)
+		{
+			((src_t *)curr_src->data)->types[rel] = 0;
+			((src_t *)curr_src->data)->typescount = ((src_t *)curr_src->data)->typescount - 1;
+			_decrement(curr_dst, rel);
+		}
+
+		// delete source if it does not have any relation
+		if (((src_t *)curr_src->data)->typescount == 0)
+		{
+			sources_delete(&curr_dst->sources, curr_src);
+			return;
+		}
+	}
+	else
+	{
+		// delete all relations
+		for (int i = 0; i < types.count; i++)
+		{
+			if (((src_t *)curr_src->data)->types[i] == 1)
+				_decrement(curr_dst, i);
+		}
+
+		// delete source
+		sources_delete(&curr_dst->sources, curr_src);
+	}
+}
+
+void _delsources(node_t *x, char *ent)
+{
+	if (x == NIL)
+		return;
+
+	if (((ent_t *)x->data)->name != ent)
+		_delsrc(ent, -1, (ent_t *)x->data);
+
+	_delsources(x->left, ent);
+	_delsources(x->right, ent);
+}
+
+void _increment(ent_t *dst, int type)
+{
+	dst->counts[type] = dst->counts[type] + 1;
+}
+
+void _decrement(ent_t *dst, int type)
+{
+	dst->counts[type] = dst->counts[type] - 1;
+}
+
+int _buildreport(node_t *x)
+{
+	if (x == NIL)
+		return 0;
+
+	int added = _buildreport(x->left);
+
+	// start build report
+	for (int c = 0; c < types.count; c++)
+	{
+		int count = ((ent_t *)x->data)->counts[c];
+		// if current count is bigger
+		if (count > types.list[c]->count)
+		{
+			types.list[c]->count = count;
+
+			types.list[c]->dsts[0] = ((ent_t *)x->data)->name;
+			types.list[c]->dstscount = 1;
+
+			added = 1;
+		}
+		// if current count is equal
+		// add the current dst
+		else if (count > 0 && count == types.list[c]->count)
+		{
+			types.list[c]->dsts[types.list[c]->dstscount] = ((ent_t *)x->data)->name;
+			types.list[c]->dstscount = types.list[c]->dstscount + 1;
+		}
+	}
+	// end build report
+
+	return added + _buildreport(x->right);
+}
+
+
+// generic tree operations
+void tree_left_rotate(node_t **root, node_t *x)
+{
+	node_t *y = x->right;
+	x->right = y->left;
+	if (y->left != NIL)
+		y->left->parent = x;
+	if (y != NIL)
+		y->parent = x->parent;
+	if (x->parent == NIL)
+		(*root) = y;
+	else if (x == x->parent->left)
+		x->parent->left = y;
+	else
+		x->parent->right = y;
+	y->left = x;
+	if (x != NIL)
+		x->parent = y;
+}
+
+void tree_right_rotate(node_t **root, node_t *x)
+{
+	node_t *y = x->left;
+	x->left = y->right;
+	if (y->right != NIL)
+		y->right->parent = x;
+	if (y != NIL)
+		y->parent = x->parent;
+	if (x->parent == NIL)
+		(*root) = y;
+	else if (x == x->parent->left)
+		x->parent->left = y;
+	else
+		x->parent->right = y;
+	y->right = x;
+	if (x != NIL)
+		x->parent = y;
+}
+
+void tree_insert_fixup(node_t **root, node_t *z)
+{
+	while (z != (*root) && z->parent->color == RED)
+	{
+		node_t *x = z->parent;
+		if (x->color == RED)
+		{
+			if (x == x->parent->left)
+			{
+				node_t *y = x->parent->right;
+				if (y->color == RED)
+				{
+					x->color = BLACK;
+					y->color = BLACK;
+					x->parent->color = RED;
+					z = x->parent;
+				}
+				else
+				{
+					if (z == x->right)
+					{
+						z = x;
+						tree_left_rotate(root, z);
+						x = z->parent;
+					}
+					x->color = BLACK;
+					x->parent->color = RED;
+					tree_right_rotate(root, x->parent);
+				}
+			}
+			else
+			{
+				node_t *y = x->parent->left;
+				if (y->color == RED)
+				{
+					x->color = BLACK;
+					y->color = BLACK;
+					x->parent->color = RED;
+					z = x->parent;
+				}
+				else
+				{
+					if (z == x->left)
+					{
+						z = x;
+						tree_right_rotate(root, z);
+						x = z->parent;
+					}
+					x->color = BLACK;
+					x->parent->color = RED;
+					tree_left_rotate(root, x->parent);
+				}
+			}
+		}
+	}
+	(*root)->color = BLACK;
+}
+
+void tree_delete_fixup(node_t **root, node_t *x)
+{
+	while (x != (*root) && x->color == BLACK)
+	{
+		if (x == x->parent->left)
+		{
+			node_t *w = x->parent->right;
+			if (w->color == RED)
+			{
+				w->color = BLACK;
+				x->parent->color = RED;
+				tree_left_rotate(root, x->parent);
+				w = x->parent->right;
+			}
+			if (w->left->color == BLACK && w->right->color == BLACK)
+			{
+				w->color = RED;
+				x = x->parent;
+			}
+			else
+			{
+				if (w->right->color == BLACK)
+				{
+					w->left->color = BLACK;
+					w->color = RED;
+					tree_right_rotate(root, w);
+					w = x->parent->right;
+				}
+				w->color = x->parent->color;
+				x->parent->color = BLACK;
+				w->right->color = BLACK;
+				tree_left_rotate(root, x->parent);
+				x = (*root); // exit loop
+			}
+		}
+		else
+		{
+			node_t *w = x->parent->left;
+			if (w->color == RED)
+			{
+				w->color = BLACK;
+				x->parent->color = RED;
+				tree_right_rotate(root, x->parent);
+				w = x->parent->left;
+			}
+			if (w->right->color == BLACK && w->left->color == BLACK)
+			{
+				w->color = RED;
+				x = x->parent;
+			}
+			else
+			{
+				if (w->left->color == BLACK)
+				{
+					w->right->color = BLACK;
+					w->color = RED;
+					tree_left_rotate(root, w);
+					w = x->parent->left;
+				}
+				w->color = x->parent->color;
+				x->parent->color = BLACK;
+				w->left->color = BLACK;
+				tree_right_rotate(root, x->parent);
+				x = (*root); // exit loop
+			}
+		}
+	}
+	x->color = BLACK;
+}
+
+node_t *tree_minimum(node_t *x)
+{
+	while (x->left != NIL)
+		x = x->left;
+	return x;
+}
+
+node_t *tree_successor(node_t *x)
+{
+	if (x->right != NIL)
+		return tree_minimum(x->right);
+	node_t *y = x->parent;
+	while (y != NIL && x == y->right)
+	{
+		x = y;
+		y = y->parent;
+	}
+	return y;
+}
+
+
+// destinations tree operations
+node_t *entities_search(node_t *root, char *ent)
+{
+	node_t *curr = root;
+	while (curr != NIL)
+	{
+		int cmp = strcmp((((ent_t *)curr->data)->name), ent);
+		if (cmp == 0)
+			return curr;
+		if (cmp < 0)
+			curr = curr->left;
+		else
+			curr = curr->right;
+	}
+	return NULL;
+}
+
+void entities_insert(node_t **root, char *ent)
+{
+	node_t *y = NIL;
+	node_t *x = (*root);
+	while (x != NIL)
+	{
+		y = x;
+		int cmp = strcmp(((ent_t *)x->data)->name, ent);
+		if (cmp == 0)
+		{
+			free(ent);
+			return;
+		}
+		else if (cmp < 0)
+			x = x->left;
+		else
+			x = x->right;
 	}
 
-	free(curr);
+	node_t *z = malloc(sizeof(node_t));
+	z->data = malloc(sizeof(ent_t));
+	for (int i = 0; i < TYPES_SIZE; i++)
+		((ent_t *)z->data)->counts[i] = 0;
+	((ent_t *)z->data)->sources = NIL;
+	((ent_t *)z->data)->name = ent;
+	z->parent = y;
+	if (y == NIL)
+		(*root) = z;
+	else if (strcmp(((ent_t *)y->data)->name, ent) < 0)
+		y->left = z;
+	else
+		y->right = z;
+	z->left = NIL;
+	z->right = NIL;
+	z->color = RED;
+	tree_insert_fixup(root, z);
+}
+
+void entities_delete(node_t **root, node_t *z)
+{
+	sources_dispose(((ent_t *)z->data)->sources);
+
+	free(((ent_t *)z->data)->name);
+	free((ent_t *)z->data);
+
+	node_t *y, *x;
+	if (z->left == NIL || z->right == NIL)
+		y = z;
+	else
+	{
+		y = tree_successor(z);
+	}
+	if (y->left != NIL)
+		x = y->left;
+	else
+		x = y->right;
+	x->parent = y->parent;
+	if (y->parent == NIL)
+		(*root) = x;
+	else if (y == y->parent->left)
+		y->parent->left = x;
+	else
+		y->parent->right = x;
+	if (y != z)
+		z->data = y->data;
+
+	if (y->color == BLACK)
+		tree_delete_fixup(root, x);
+
+	free(y);
+}
+
+void entities_dispose(node_t *x)
+{
+	if (x == NIL)
+		return;
+
+	entities_dispose(x->left);
+	entities_dispose(x->right);
+
+	sources_dispose(((ent_t *)x->data)->sources);
+
+	free(((ent_t *)x->data)->name);
+	free((ent_t *)x->data);
+	free(x);
+}
+
+
+// sources tree operations
+node_t *sources_search(node_t *node, char *ent)
+{
+	node_t *curr = node;
+	while (curr != NIL)
+	{
+		int cmp = strcmp(ent, (((src_t *)curr->data)->src));
+		if (cmp == 0)
+			return curr;
+		if (cmp < 0)
+			curr = curr->left;
+		else
+			curr = curr->right;
+	}
+	return NULL;
+}
+
+src_t *sources_insert(node_t **root, char *ent)
+{
+	node_t *y = NIL;
+	node_t *x = (*root);
+	while (x != NIL)
+	{
+		y = x;
+		int cmp = strcmp(ent, ((src_t *)x->data)->src);
+		if (cmp == 0)
+		{
+			return (src_t *)x->data;
+		}
+		else if (cmp < 0)
+			x = x->left;
+		else
+			x = x->right;
+	}
+
+	node_t *z = malloc(sizeof(node_t));
+	z->data = malloc(sizeof(src_t));
+	((src_t *)z->data)->src = ent;
+	((src_t *)z->data)->typescount = 0;
+	for (int i = 0; i < TYPES_SIZE; i++)
+		((src_t *)z->data)->types[i] = 0;
+	z->parent = y;
+	if (y == NIL)
+		(*root) = z;
+	else if (strcmp(ent, ((src_t *)y->data)->src) < 0)
+		y->left = z;
+	else
+		y->right = z;
+	z->left = NIL;
+	z->right = NIL;
+	z->color = RED;
+	tree_insert_fixup(root, z);
+
+	return z->data;
+}
+
+void sources_delete(node_t **root, node_t *z)
+{
+	free((src_t *)z->data);
+
+	node_t *y, *x;
+	if (z->left == NIL || z->right == NIL)
+		y = z;
+	else
+	{
+		y = tree_successor(z);
+	}
+	if (y->left != NIL)
+		x = y->left;
+	else
+		x = y->right;
+	x->parent = y->parent;
+	if (y->parent == NIL)
+		(*root) = x;
+	else if (y == y->parent->left)
+		y->parent->left = x;
+	else
+		y->parent->right = x;
+	if (y != z)
+		z->data = y->data;
+
+	if (y->color == BLACK)
+		tree_delete_fixup(root, x);
+
+	free(y);
+}
+
+void sources_dispose(node_t *x)
+{
+	if (x != NIL)
+	{
+		sources_dispose(x->left);
+		sources_dispose(x->right);
+
+		free((src_t *)x->data);
+		free(x);
+	}
 }
