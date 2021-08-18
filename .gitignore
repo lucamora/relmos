@@ -54,7 +54,7 @@ dkms.conf
 # Custom
 .vscode
 bin
-scripts
-tests
+#scripts
+#tests
 relmos
 *.txt

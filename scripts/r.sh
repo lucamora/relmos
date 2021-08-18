@@ -1,0 +1,1 @@
+cat in.txt | ./relmos > out.txt
